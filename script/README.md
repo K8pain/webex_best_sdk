@@ -14,6 +14,7 @@
 | [`script/ci-bootstrap`](#scriptcibootstrap) | CI bootstrap script |
 | [`script/server`](#scriptserver) | Control project servers and services |
 | [`script/console`](#scriptconsole) | Access the project's console |
+| [`script/generate_dummy_users.py`](#scriptgenerate_dummy_userspy) | Generate dummy users for lab tests |
 
 ### script/installdeps
 
@@ -73,3 +74,14 @@ The GitHub Engineering Team: [Scripts to Rule Them All](https://githubengineerin
 [ci]: ci
 [ci-bootstrap]: ci-bootstrap
 [console]: console
+
+
+### script/generate_dummy_users.py
+
+Generate a CSV file with deterministic dummy users for lab testing.
+
+Example:
+
+```bash
+script/generate_dummy_users.py --domain lab.example.com --count 20 --output tmp/dummy_users.csv
+```
