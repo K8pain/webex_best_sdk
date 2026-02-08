@@ -35,3 +35,17 @@ Cada script ahora muestra en `--help` qué variables de `--vars` son:
 - **Optional (probe-only)**: solo útiles para `--mode probe`.
 
 Además, se incluye un mapeo consolidado en `actions/vars_mapping.md` con el detalle por script, endpoint y estado de paridad (script vs SDK 1.27 vs especificación oficial).
+
+
+## Preparación de laboratorio con dependencias reales
+Si el tenant de laboratorio está vacío, usa:
+
+```bash
+export WEBEX_ACCESS_TOKEN="..."
+python actions/bootstrap_lab_dependencies.py   --location-id "<location_id_real>"   --users-count 3   --output-json actions/lab_bootstrap_output.json   --output-commands actions/script_test_commands_lab.md
+```
+
+Este script intenta crear/descubrir usuarios dummy (y resolver group/workspace/role cuando sea posible) y genera:
+- `actions/lab_bootstrap_output.json` con variables por script y dependencias faltantes.
+- `actions/script_test_commands_lab.md` con comandos `--mode apply` listos para ejecutar contra servidor.
+
