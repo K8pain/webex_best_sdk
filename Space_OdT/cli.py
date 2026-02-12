@@ -24,7 +24,7 @@ LAB_FALLBACK_WEBEX_ACCESS_TOKEN = 'ZmI0ZmE0MDYtMGViYS00MDc0LWFhZGEtNThlNGYzOTVmM
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Space_OdT deterministic Webex read-only exporter')
-    parser.add_argument('command', choices=['inventory_run', 'v2_bulk_run'])
+    parser.add_argument('command', choices=['inventory_run', 'v2_bulk_run', 'v21_softphone_bulk_run', 'v21_softphone_ui'])
     parser.add_argument('--out-dir', default='.artifacts')
     parser.add_argument('--no-report', action='store_true')
     parser.add_argument('--no-cache', action='store_true')
@@ -35,6 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--only-failures', action='store_true')
     parser.add_argument('--debug-har', action='store_true')
     parser.add_argument('--decisions-file', default=None, help='JSON file with stage decisions to avoid interactive prompts')
+    parser.add_argument('--v21-apply', action='store_true', help='For v2.1 run: apply mode (default is dry-run)')
+    parser.add_argument('--v21-ui-host', default='127.0.0.1')
+    parser.add_argument('--v21-ui-port', type=int, default=8765)
     return parser
 
 
@@ -105,6 +108,37 @@ def main() -> None:
             print(str(exc))
             raise SystemExit(2)
         print(f"V2 run completed: completed={summary['completed_count']} failed={summary['failed_count']}")
+        raise SystemExit(0)
+
+
+    if args.command == 'v21_softphone_ui':
+        from Space_OdT.v21 import launch_v21_ui
+
+        token = args.token or os.getenv('WEBEX_ACCESS_TOKEN')
+        if not token:
+            raise SystemExit('WEBEX_ACCESS_TOKEN is required (or pass --token)')
+        launch_v21_ui(token=token, out_dir=Path(args.out_dir), host=args.v21_ui_host, port=args.v21_ui_port)
+        raise SystemExit(0)
+
+    if args.command == 'v21_softphone_bulk_run':
+        from Space_OdT.v21.engine import MissingV21InputsError, V21Runner
+
+        token = args.token or os.getenv('WEBEX_ACCESS_TOKEN')
+        if not token:
+            raise SystemExit('WEBEX_ACCESS_TOKEN is required (or pass --token)')
+        runner = V21Runner(
+            token=token,
+            out_dir=Path(args.out_dir),
+        )
+        try:
+            summary = asyncio.run(runner.run(dry_run=not args.v21_apply))
+        except MissingV21InputsError as exc:
+            print(str(exc))
+            raise SystemExit(2)
+        print(
+            f"V2.1 run completed: mode={summary['mode']} "
+            f"planned={summary['planned_count']} failed={summary['failed_count']}"
+        )
         raise SystemExit(0)
     raise SystemExit(2)
 
