@@ -53,54 +53,32 @@ def _write_report_if_enabled(settings: Settings, status_rows: list[dict], module
         return None
     report_file = settings.out_dir / 'report' / 'index.html'
     rows_html = ''.join(
-        f"<tr><td>{row['module']}</td><td><code>{row['method']}</code></td><td><span class='badge {row['result']}'>{row['result']}</span></td><td>{row['count']}</td><td>{row['error']}</td></tr>"
+        f"<tr><td>{row['module']}</td><td>{row['method']}</td><td>{row['result']}</td><td>{row['count']}</td><td>{row['error']}</td></tr>"
         for row in status_rows
     )
-    total_modules = len(module_counts)
-    ok_modules = sum(1 for row in status_rows if row['result'] == 'ok')
-    error_modules = total_modules - ok_modules
-    modules_list = ''.join(
-        f"<li><span>{name}</span><strong>{count}</strong></li>"
-        for name, count in sorted(module_counts.items())
-    )
+    base_modules = {'people', 'groups', 'locations', 'licenses', 'workspaces', 'calling_locations'}
+    base_list = ''.join(f'<li>{name}: {module_counts.get(name, 0)}</li>' for name in sorted(base_modules))
+    new_modules = sorted([name for name in module_counts if name not in base_modules])
+    new_list = ''.join(f'<li><strong>NEW</strong> {name}: {module_counts[name]}</li>' for name in new_modules)
     html = f"""
 <!doctype html>
 <html><head><meta charset='utf-8'><title>Space_OdT Export Report</title>
 <style>
-* {{ box-sizing: border-box; }}
-body {{ font-family: Inter, Segoe UI, Arial, sans-serif; margin: 0; background:#f6f8fc; color:#1f2a44; }}
-.wrap {{ max-width: 1280px; margin: 0 auto; padding: 24px; }}
-.top {{ display:flex; gap: 12px; margin: 14px 0 20px; flex-wrap: wrap; }}
-.chip {{ background: #fff; border:1px solid #dce2ef; border-radius: 999px; padding: 8px 14px; }}
-.layout {{ display:grid; grid-template-columns: 340px 1fr; gap:16px; align-items: start; }}
-.card {{ background:#fff; border:1px solid #dce2ef; border-radius:12px; padding:14px; box-shadow:0 1px 2px rgba(16,24,40,.04); }}
-h1 {{ margin:0; font-size: 28px; }}
-h2 {{ margin:0 0 10px; font-size: 18px; }}
-ul {{ list-style:none; padding:0; margin:0; max-height: 70vh; overflow:auto; }}
-li {{ display:flex; justify-content:space-between; border-bottom:1px dashed #e8ecf5; padding:7px 0; gap:8px; }}
-li:last-child {{ border-bottom:0; }}
-table {{ border-collapse: collapse; width:100%; font-size:14px; }}
-thead th {{ position: sticky; top: 0; background: #f9fbff; }}
-th,td {{ border-bottom:1px solid #edf1f7; padding:8px; text-align:left; vertical-align: top; }}
-.badge {{ border-radius:999px; padding:2px 10px; font-size:12px; font-weight:600; text-transform: uppercase; }}
-.ok {{ background:#e9f9ef; color:#1f7a44; }}
-.error,.forbidden,.not_found {{ background:#feecef; color:#b42318; }}
-code {{ background:#f3f6fd; padding:1px 4px; border-radius:4px; }}
+body {{ font-family: Arial, sans-serif; margin: 24px; }}
+.grid {{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; }}
+.card {{ border:1px solid #ddd; border-radius:8px; padding:12px; }}
+.new {{ background:#f3f9ff; }}
+table {{ border-collapse: collapse; width:100%; margin-top:16px; }}
+th,td {{ border:1px solid #ccc; padding:6px; text-align:left; }}
 </style></head>
 <body>
 <div class='wrap'>
 <h1>Space_OdT Export Report</h1>
-<div class='top'>
-  <div class='chip'>Módulos: <strong>{total_modules}</strong></div>
-  <div class='chip'>OK: <strong>{ok_modules}</strong></div>
-  <div class='chip'>Con error: <strong>{error_modules}</strong></div>
+<div class='grid'>
+  <div class='card'><h2>Foundation</h2><ul>{base_list}</ul></div>
+  <div class='card new'><h2>New V1 retrieval artifacts</h2><ul>{new_list}</ul></div>
 </div>
-</div>
-<div class='layout'>
-  <aside class='card'><h2>Inventario (misma plana)</h2><ul>{modules_list}</ul></aside>
-  <section class='card'><h2>Estado por método</h2><table><thead><tr><th>Module</th><th>Method</th><th>Result</th><th>Count</th><th>Error</th></tr></thead><tbody>{rows_html}</tbody></table></section>
-</div>
-</div>
+<table><thead><tr><th>Module</th><th>Method</th><th>Result</th><th>Count</th><th>Error</th></tr></thead><tbody>{rows_html}</tbody></table>
 </body></html>
 """.strip()
     report_file.parent.mkdir(parents=True, exist_ok=True)

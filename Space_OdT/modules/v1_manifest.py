@@ -84,17 +84,14 @@ def run_artifact(api, spec: ArtifactSpec, cache: dict[str, list[dict]]) -> Modul
     method = resolve_attr(api, spec.method_path)
     rows: list[dict] = []
     for kwargs in _iter_kwargs(cache, spec):
-        try:
-            payload = call_with_supported_kwargs(method, **kwargs)
-            items = [model_to_dict(i) for i in as_list(payload)]
-            if not items and isinstance(payload, object):
-                maybe = model_to_dict(payload)
-                if maybe:
-                    items = [maybe]
-            for item in items:
-                rows.append(_row_from_item(item, spec.method_path, kwargs))
-        except Exception:
-            continue
+        payload = call_with_supported_kwargs(method, **kwargs)
+        items = [model_to_dict(i) for i in as_list(payload)]
+        if not items and isinstance(payload, object):
+            maybe = model_to_dict(payload)
+            if maybe:
+                items = [maybe]
+        for item in items:
+            rows.append(_row_from_item(item, spec.method_path, kwargs))
     return ModuleResult(module=spec.module, method=spec.method_path, rows=rows, count=len(rows), raw_keys=[])
 
 
@@ -111,23 +108,23 @@ V1_ARTIFACT_SPECS: list[ArtifactSpec] = [
     ArtifactSpec('auto_attendant_announcement_files', 'telephony.auto_attendant.list_announcement_files', {},
                  (ParamSource('location_id', 'auto_attendants', 'location_id'), ParamSource('auto_attendant_id', 'auto_attendants', 'id'))),
     ArtifactSpec('auto_attendant_forwarding', 'telephony.auto_attendant.forwarding.settings', {},
-                 (ParamSource('location_id', 'auto_attendants', 'location_id'), ParamSource('feature_id', 'auto_attendants', 'id'))),
+                 (ParamSource('location_id', 'auto_attendants', 'location_id'), ParamSource('auto_attendant_id', 'auto_attendants', 'id'))),
 
     ArtifactSpec('hunt_groups', 'telephony.huntgroup.list', {}),
     ArtifactSpec('hunt_group_details', 'telephony.huntgroup.details', {},
                  (ParamSource('location_id', 'hunt_groups', 'location_id'), ParamSource('huntgroup_id', 'hunt_groups', 'id'))),
     ArtifactSpec('hunt_group_forwarding', 'telephony.huntgroup.forwarding.settings', {},
-                 (ParamSource('location_id', 'hunt_groups', 'location_id'), ParamSource('feature_id', 'hunt_groups', 'id'))),
+                 (ParamSource('location_id', 'hunt_groups', 'location_id'), ParamSource('huntgroup_id', 'hunt_groups', 'id'))),
 
     ArtifactSpec('call_queues', 'telephony.callqueue.list', {}),
     ArtifactSpec('call_queue_details', 'telephony.callqueue.details', {},
                  (ParamSource('location_id', 'call_queues', 'location_id'), ParamSource('queue_id', 'call_queues', 'id'))),
     ArtifactSpec('call_queue_settings', 'telephony.callqueue.get_call_queue_settings', {},
-                 ()),
+                 (ParamSource('location_id', 'call_queues', 'location_id'), ParamSource('queue_id', 'call_queues', 'id'))),
     ArtifactSpec('call_queue_agents', 'telephony.callqueue.agents.list', {},
                  (ParamSource('location_id', 'call_queues', 'location_id'), ParamSource('queue_id', 'call_queues', 'id'))),
     ArtifactSpec('call_queue_forwarding', 'telephony.callqueue.forwarding.settings', {},
-                 (ParamSource('location_id', 'call_queues', 'location_id'), ParamSource('feature_id', 'call_queues', 'id'))),
+                 (ParamSource('location_id', 'call_queues', 'location_id'), ParamSource('queue_id', 'call_queues', 'id'))),
 
     ArtifactSpec('virtual_lines', 'telephony.virtual_lines.list', {}),
     ArtifactSpec('virtual_line_details', 'telephony.virtual_lines.details', {},
@@ -137,29 +134,29 @@ V1_ARTIFACT_SPECS: list[ArtifactSpec] = [
 
     ArtifactSpec('virtual_extensions', 'telephony.virtual_extensions.list_extensions', {}),
     ArtifactSpec('virtual_extension_details', 'telephony.virtual_extensions.details_extension', {},
-                 (ParamSource('extension_id', 'virtual_extensions', 'id'),)),
+                 (ParamSource('location_id', 'virtual_extensions', 'location_id'), ParamSource('extension_id', 'virtual_extensions', 'id'))),
     ArtifactSpec('virtual_extension_ranges', 'telephony.virtual_extensions.list_range', {}),
     ArtifactSpec('virtual_extension_range_details', 'telephony.virtual_extensions.details_range', {},
-                 (ParamSource('extension_range_id', 'virtual_extension_ranges', 'id'),)),
+                 (ParamSource('location_id', 'virtual_extension_ranges', 'location_id'), ParamSource('range_id', 'virtual_extension_ranges', 'id'))),
 
     ArtifactSpec('person_numbers', 'person_settings.numbers.read', {}, (ParamSource('person_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_permissions_in', 'person_settings.permissions_in.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_permissions_out', 'person_settings.permissions_out.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_out_access_codes', 'person_settings.permissions_out.access_codes.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_out_digit_patterns', 'person_settings.permissions_out.digit_patterns.get_digit_patterns', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_transfer_numbers', 'person_settings.permissions_out.transfer_numbers.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_permissions_in', 'person_settings.permissions_in.read', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_permissions_out', 'person_settings.permissions_out.read', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_out_access_codes', 'person_settings.permissions_out.access_codes.read', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_out_digit_patterns', 'person_settings.permissions_out.digit_patterns.get_digit_patterns', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_transfer_numbers', 'person_settings.permissions_out.transfer_numbers.read', {}, (ParamSource('person_id', 'people', 'person_id'),)),
 
-    ArtifactSpec('workspace_permissions_in', 'workspace_settings.permissions_in.read', {}, (ParamSource('entity_id', 'workspaces', 'id'),)),
-    ArtifactSpec('workspace_permissions_out', 'workspace_settings.permissions_out.read', {}, (ParamSource('entity_id', 'workspaces', 'id'),)),
+    ArtifactSpec('workspace_permissions_in', 'workspace_settings.permissions_in.read', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
+    ArtifactSpec('workspace_permissions_out', 'workspace_settings.permissions_out.read', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
     ArtifactSpec('workspace_devices', 'workspace_settings.devices.list', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
 
-    ArtifactSpec('person_available_numbers_available', 'person_settings.available_numbers.available', {}, (ParamSource('location_id', 'calling_locations', 'id'),)),
-    ArtifactSpec('person_available_numbers_primary', 'person_settings.available_numbers.primary', {}, (ParamSource('location_id', 'calling_locations', 'id'),)),
-    ArtifactSpec('person_available_numbers_secondary', 'person_settings.available_numbers.secondary', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_call_forward', 'person_settings.available_numbers.call_forward', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_call_intercept', 'person_settings.available_numbers.call_intercept', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_ecbn', 'person_settings.available_numbers.ecbn', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_fax_message', 'person_settings.available_numbers.fax_message', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_available', 'person_settings.available_numbers.available', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_primary', 'person_settings.available_numbers.primary', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_secondary', 'person_settings.available_numbers.secondary', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_call_forward', 'person_settings.available_numbers.call_forward', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_call_intercept', 'person_settings.available_numbers.call_intercept', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_ecbn', 'person_settings.available_numbers.ecbn', {}, (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_fax_message', 'person_settings.available_numbers.fax_message', {}, (ParamSource('person_id', 'people', 'person_id'),)),
 
     ArtifactSpec('virtual_line_available_numbers_available', 'telephony.virtual_lines.available_numbers.available', {}, (ParamSource('virtual_line_id', 'virtual_lines', 'id'),)),
     ArtifactSpec('virtual_line_available_numbers_primary', 'telephony.virtual_lines.available_numbers.primary', {}, (ParamSource('virtual_line_id', 'virtual_lines', 'id'),)),

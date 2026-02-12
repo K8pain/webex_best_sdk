@@ -12,8 +12,19 @@ Deterministic, read-only Webex inventory exporter focused on CSV/JSON outputs.
 ## Usage
 
 ```bash
+# Option A: pass token directly (highest priority)
+python -m Space_OdT.cli inventory_run --token "<WEBEX_ACCESS_TOKEN>" --out-dir .artifacts --open-report
+
+# Option B: export the token
 export WEBEX_ACCESS_TOKEN=...
 python -m Space_OdT.cli inventory_run --out-dir .artifacts --open-report
+
+# Option C: place WEBEX_ACCESS_TOKEN in a .env file
+# (supported in the current folder, any parent folder, or project root)
+python -m Space_OdT.cli inventory_run --out-dir .artifacts --open-report
+
+# Windows/PowerShell alternative (script path invocation)
+python Space_OdT\cli.py inventory_run --out-dir .\.artifacts\ --open-report
 ```
 
 ## Output
@@ -24,4 +35,4 @@ python -m Space_OdT.cli inventory_run --out-dir .artifacts --open-report
 - `.artifacts/cache.json` (optional)
 - `.artifacts/report/index.html` (optional)
 
-The static HTML report shows all modules in a single modern dashboard view (inventory + method status table in the same plane).
+The static HTML report highlights the new V1 artifacts in a dedicated section so new coverage is visible quickly.
