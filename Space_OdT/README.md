@@ -5,7 +5,11 @@ Deterministic, read-only Webex inventory exporter focused on CSV/JSON outputs.
 ## Usage
 
 ```bash
+# Option A: export the token
 export WEBEX_ACCESS_TOKEN=...
+
+# Option B: place WEBEX_ACCESS_TOKEN in a .env file
+# (supported in the current folder, any parent folder, or project root)
 python -m Space_OdT.cli inventory_run --out-dir .artifacts --open-report
 ```
 
