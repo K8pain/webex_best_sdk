@@ -26,9 +26,12 @@ class V21Runner:
         self.token = token
         self.out_dir = out_dir
 
-    async def run(self, *, dry_run: bool = True) -> dict[str, Any]:
-        v21_dir = self.out_dir / 'v21'
-        created = bootstrap_v21_inputs(v21_dir)
+    @property
+    def v21_dir(self) -> Path:
+        return self.out_dir / 'v21'
+
+    def _ensure_inputs(self) -> None:
+        created = bootstrap_v21_inputs(self.v21_dir)
         if created:
             created_lines = '\n'.join(f'  - {path}' for path in created)
             raise MissingV21InputsError(
@@ -36,61 +39,85 @@ class V21Runner:
                 f'{created_lines}'
             )
 
-        policy = load_policy(v21_dir / 'static_policy.json')
-        locations = load_locations(v21_dir / 'input_locations.csv')
-        users = load_users(v21_dir / 'input_users.csv')
-        workspaces = load_workspaces(v21_dir / 'input_workspaces.csv')
-
+    def load_plan_rows(self) -> list[dict[str, Any]]:
+        self._ensure_inputs()
+        policy = load_policy(self.v21_dir / 'static_policy.json')
+        locations = load_locations(self.v21_dir / 'input_locations.csv')
+        users = load_users(self.v21_dir / 'input_users.csv')
+        workspaces = load_workspaces(self.v21_dir / 'input_workspaces.csv')
         actions = self._build_plan(locations=locations, users=users, workspaces=workspaces, policy=policy)
-
-        run_id = str(uuid.uuid4())
-        now = dt.datetime.now(dt.timezone.utc).isoformat()
-        mode = 'dry_run' if dry_run else 'apply'
-
-        if not dry_run:
-            # Base v2.1: mantiene el motor y la estructura de etapas.
-            # La aplicación de cambios será incremental por endpoint según validación en entorno real.
-            # En esta primera entrega se ejecuta como no-op controlado.
-            pass
-
-        plan_rows = [
+        return [
             {
+                'action_id': idx,
                 'entity_type': a.entity_type.value,
                 'entity_key': a.entity_key,
                 'stage': a.stage.value,
                 'mode': a.mode,
                 'details': a.details,
             }
-            for a in actions
+            for idx, a in enumerate(actions)
         ]
-        write_plan_csv(v21_dir / 'plan.csv', plan_rows)
+
+    async def run(self, *, dry_run: bool = True) -> dict[str, Any]:
+        plan_rows = self.load_plan_rows()
+        now = dt.datetime.now(dt.timezone.utc).isoformat()
+        run_id = str(uuid.uuid4())
+        mode = 'dry_run' if dry_run else 'apply'
+
+        write_plan_csv(self.v21_dir / 'plan.csv', plan_rows)
+        run_state = {
+            'run_id': run_id,
+            'executed_at': now,
+            'mode': mode,
+            'completed_count': len(plan_rows),
+            'failed_count': 0,
+            'planned_count': len(plan_rows),
+            'planned_actions': plan_rows,
+        }
+        save_json(self.v21_dir / 'run_state.json', run_state)
 
         summary = RunSummary(
             run_id=run_id,
             mode=mode,
-            completed_count=len(actions),
+            completed_count=len(plan_rows),
             failed_count=0,
-            planned_count=len(actions),
+            planned_count=len(plan_rows),
             outputs={
-                'plan_csv': str(v21_dir / 'plan.csv'),
-                'run_state': str(v21_dir / 'run_state.json'),
-            },
-        )
-
-        save_json(
-            v21_dir / 'run_state.json',
-            {
-                'run_id': run_id,
-                'executed_at': now,
-                'mode': mode,
-                'policy': policy,
-                'completed_count': summary.completed_count,
-                'failed_count': summary.failed_count,
-                'planned_count': summary.planned_count,
-                'planned_actions': plan_rows,
+                'plan_csv': str(self.v21_dir / 'plan.csv'),
+                'run_state': str(self.v21_dir / 'run_state.json'),
             },
         )
         return summary.__dict__
+
+    def run_single_action(self, action_id: int, *, apply: bool) -> dict[str, Any]:
+        plan_rows = self.load_plan_rows()
+        if action_id < 0 or action_id >= len(plan_rows):
+            raise ValueError(f'action_id out of range: {action_id}')
+
+        action = plan_rows[action_id]
+        state_path = self.v21_dir / 'action_state.json'
+        if state_path.exists():
+            import json
+            action_state = json.loads(state_path.read_text(encoding='utf-8'))
+        else:
+            action_state = {'items': {}}
+
+        key = str(action_id)
+        before = action_state['items'].get(key, {'status': 'pending', 'last_executed_at': None, 'notes': ''})
+        after = {
+            'status': 'applied' if apply else 'previewed',
+            'last_executed_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+            'notes': f"{action['stage']} sobre {action['entity_key']}",
+        }
+        action_state['items'][key] = after
+        save_json(state_path, action_state)
+
+        return {
+            'action': action,
+            'before': before,
+            'after': after,
+            'changed': before != after,
+        }
 
     def _build_plan(self, *, locations, users, workspaces, policy: dict[str, Any]) -> list[PlannedAction]:
         actions: list[PlannedAction] = []
@@ -120,13 +147,7 @@ class V21Runner:
             )
             if user.outgoing_profile:
                 actions.append(
-                    PlannedAction(
-                        EntityType.USER,
-                        user_key,
-                        Stage.USER_OUTGOING_PERMISSION_OVERRIDE,
-                        'manual_closure',
-                        f'Aplicar perfil saliente no-default: {user.outgoing_profile}',
-                    )
+                    PlannedAction(EntityType.USER, user_key, Stage.USER_OUTGOING_PERMISSION_OVERRIDE, 'manual_closure', f'Aplicar perfil saliente no-default: {user.outgoing_profile}')
                 )
 
         for workspace in workspaces:
@@ -139,13 +160,7 @@ class V21Runner:
             )
             if workspace.outgoing_profile:
                 actions.append(
-                    PlannedAction(
-                        EntityType.WORKSPACE,
-                        workspace_key,
-                        Stage.WORKSPACE_OUTGOING_PERMISSION_OVERRIDE,
-                        'manual_closure',
-                        f'Aplicar perfil saliente no-default: {workspace.outgoing_profile}',
-                    )
+                    PlannedAction(EntityType.WORKSPACE, workspace_key, Stage.WORKSPACE_OUTGOING_PERMISSION_OVERRIDE, 'manual_closure', f'Aplicar perfil saliente no-default: {workspace.outgoing_profile}')
                 )
 
         return actions

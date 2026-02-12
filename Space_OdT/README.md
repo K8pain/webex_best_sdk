@@ -132,3 +132,51 @@ Si faltan, el comando crea plantillas automáticamente.
 - Asignar DDIs
 
 > Nota: en ocasiones la carga masiva en Control Hub resuelve solo una parte y queda una tarea manual para cierre completo. Esta base v2.1 está pensada para soportar ese cierre manual/scriptable.
+
+### ¿De qué archivos sale la configuración de cada caso en v2.1?
+
+La estructura quedó así para que cada configuración sea simple de modificar:
+
+- `Space_OdT/v21/models.py`
+  - Define las entidades y etapas (`Stage`) de forma explícita.
+- `Space_OdT/v21/io.py`
+  - Define los contratos de entrada (cabeceras CSV) y bootstrap de plantillas.
+  - Archivos de entrada:
+    - `.artifacts/v21/input_locations.csv`
+    - `.artifacts/v21/input_users.csv`
+    - `.artifacts/v21/input_workspaces.csv`
+    - `.artifacts/v21/static_policy.json`
+- `Space_OdT/v21/engine.py`
+  - Construye el plan de acciones (`load_plan_rows`) y ejecuta acción unitaria (`run_single_action`).
+  - Persistencia de estado:
+    - `.artifacts/v21/plan.csv`
+    - `.artifacts/v21/run_state.json`
+    - `.artifacts/v21/action_state.json`
+
+Regla de diseño: **modificas CSV/política, no código**, salvo que quieras introducir una etapa nueva.
+
+### UI HTML5 por botón (acción unitaria)
+
+Ahora existe una UI local HTML5 para ejecutar una acción cada vez:
+
+```bash
+python -m Space_OdT.cli v21_softphone_ui --out-dir .artifacts --token "<WEBEX_ACCESS_TOKEN>"
+```
+
+- Abre: `http://127.0.0.1:8765`
+- Cada tarjeta muestra una acción con botones:
+  - **Preview**: muestra before/after de la acción antes de aplicar.
+  - **Apply**: ejecuta la acción (en esta base, flujo controlado de estado para cierre manual).
+- Resultado visible en JSON con:
+  - `action`
+  - `before`
+  - `after`
+  - `changed`
+
+Esto deja claro qué está a punto de cambiar y qué cambió después.
+
+### Estado real de implementación v2.1
+
+No, la v2.1 todavía **no** es el 100% de toda la implementación final de endpoints productivos.
+Esta entrega cubre la base independiente, la estructura de configuración, planificador de acciones y UI por botón para operación de cierre manual.
+La conexión endpoint-a-endpoint a Webex para cada acción debe completarse iterativamente por etapa en siguientes incrementos.
