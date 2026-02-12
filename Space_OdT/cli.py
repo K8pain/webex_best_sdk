@@ -13,14 +13,10 @@ if __package__ in (None, ''):
     from Space_OdT.config import Settings
     from Space_OdT.export_runner import run_exports
     from Space_OdT.sdk_client import MissingTokenError, create_api
-    from Space_OdT.v2.engine import V2Runner, parse_stage_decision
-    from Space_OdT.v2.models import Stage
 else:
     from .config import Settings
     from .export_runner import run_exports
     from .sdk_client import MissingTokenError, create_api
-    from .v2.engine import V2Runner, parse_stage_decision
-    from .v2.models import Stage
 
 
 LAB_FALLBACK_WEBEX_ACCESS_TOKEN = 'ZmI0ZmE0MDYtMGViYS00MDc0LWFhZGEtNThlNGYzOTVmMDE4ODMzZTJjOTUtZGZi_P0A1_e5f7d973-b269-4686-997e-45119168ced2'
@@ -71,9 +67,11 @@ def inventory_run(args) -> int:
 
 
 def _decision_provider_from_file(path: Path):
+    from Space_OdT.v2.engine import parse_stage_decision
+
     payload = json.loads(path.read_text(encoding='utf-8'))
 
-    def provider(stage: Stage):
+    def provider(stage):
         raw = str(payload.get(stage.value, 'yes'))
         return parse_stage_decision(raw)
 
@@ -86,6 +84,8 @@ def main() -> None:
     if args.command == 'inventory_run':
         raise SystemExit(inventory_run(args))
     if args.command == 'v2_bulk_run':
+        from Space_OdT.v2.engine import MissingV2InputsError, V2Runner
+
         token = args.token or os.getenv('WEBEX_ACCESS_TOKEN')
         if not token:
             raise SystemExit('WEBEX_ACCESS_TOKEN is required (or pass --token)')
@@ -99,7 +99,11 @@ def main() -> None:
             debug_har=args.debug_har,
             decision_provider=decision_provider,
         )
-        summary = asyncio.run(runner.run(only_failures=args.only_failures))
+        try:
+            summary = asyncio.run(runner.run(only_failures=args.only_failures))
+        except MissingV2InputsError as exc:
+            print(str(exc))
+            raise SystemExit(2)
         print(f"V2 run completed: completed={summary['completed_count']} failed={summary['failed_count']}")
         raise SystemExit(0)
     raise SystemExit(2)

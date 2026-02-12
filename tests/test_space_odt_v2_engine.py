@@ -1,5 +1,10 @@
-from Space_OdT.v2.engine import V2Runner, parse_stage_decision
+import asyncio
+from pathlib import Path
+
+from Space_OdT.v2.engine import MissingV2InputsError, V2Runner, parse_stage_decision
 from Space_OdT.v2.models import InputRecord, Stage, StageDecision
+
+import pytest
 
 
 def _record(**payload):
@@ -45,3 +50,15 @@ def test_parse_stage_decision_yes_no_yesbut() -> None:
     assert parse_stage_decision('yes') == (StageDecision.YES, None)
     assert parse_stage_decision('no') == (StageDecision.NO, None)
     assert parse_stage_decision('yesbut overrides.csv') == (StageDecision.YESBUT, 'overrides.csv')
+
+
+def test_v2_runner_bootstraps_missing_inputs_and_fails_guided(tmp_path: Path) -> None:
+    runner = V2Runner(token='token', out_dir=tmp_path, decision_provider=lambda stage: (StageDecision.NO, None))
+
+    with pytest.raises(MissingV2InputsError, match='Se crearon archivos plantilla requeridos para V2'):
+        asyncio.run(runner.run())
+
+    v2_dir = tmp_path / 'v2'
+    assert (v2_dir / 'input_softphones.csv').exists()
+    assert (v2_dir / 'static_policy.json').exists()
+    assert (v2_dir / 'decisions.sample.json').exists()
