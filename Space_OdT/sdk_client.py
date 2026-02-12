@@ -38,4 +38,6 @@ def _load_token_from_dotenv() -> None:
             continue
         seen.add(resolved)
         if env_path.is_file():
-            load_dotenv(dotenv_path=env_path, override=False)
+            # Prefer deterministic .env-based auth for Space_OdT runs, even when
+            # a stale WEBEX_ACCESS_TOKEN is already present in the shell env.
+            load_dotenv(dotenv_path=env_path, override=True)

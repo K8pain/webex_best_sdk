@@ -37,6 +37,21 @@ def test_create_api_uses_existing_env_var(monkeypatch: pytest.MonkeyPatch) -> No
     assert api.tokens == 'from_env'
 
 
+def test_create_api_prefers_dotenv_over_existing_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project_dir = tmp_path / 'repo'
+    nested_dir = project_dir / 'Space_OdT' / 'run'
+    nested_dir.mkdir(parents=True)
+    (project_dir / '.env').write_text('WEBEX_ACCESS_TOKEN=from_dotenv\n')
+
+    monkeypatch.chdir(nested_dir)
+    monkeypatch.setenv('WEBEX_ACCESS_TOKEN', 'from_env')
+    monkeypatch.setitem(sys.modules, 'wxc_sdk', SimpleNamespace(WebexSimpleApi=DummyApi))
+
+    api = sdk_client.create_api()
+
+    assert api.tokens == 'from_dotenv'
+
+
 def test_create_api_raises_without_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv('WEBEX_ACCESS_TOKEN', raising=False)
