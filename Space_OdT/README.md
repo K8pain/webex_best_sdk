@@ -211,3 +211,15 @@ Implementado ahora en `Space_OdT/v21/engine.py`:
   - Estado before/after real leyendo APIs cuando la credencial lo permite.
 
 Lo que sigue fuera de scope de v2.1 permanece en `OUT_OF_SCOPE.md` y se gestiona por Control Hub masivo + cierres manuales.
+
+### Plantillas v2.1 con contenido dummy inicial
+
+Para acelerar pruebas, cuando faltan los archivos de `.artifacts/v21/`, el bootstrap ahora crea:
+
+- `input_locations.csv` con 1 sede dummy (`CUV93429975500_FICTICIA`) y parámetros típicos de PSTN/numeración/perfil.
+- `input_users.csv` con 1 usuario dummy asociado a esa sede.
+- `input_workspaces.csv` con 1 workspace dummy asociado a esa sede.
+- `static_policy.json` con `profile_2` listo para pruebas.
+- `OUT_OF_SCOPE.md` con el alcance excluido.
+
+Con esto, al abrir `v21_softphone_ui` ya aparecen ítems de plan aunque luego reemplaces los datos por los reales.

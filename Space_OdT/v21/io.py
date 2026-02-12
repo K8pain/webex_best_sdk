@@ -68,6 +68,51 @@ def bootstrap_v21_inputs(v21_dir: Path) -> list[Path]:
             with path.open('w', encoding='utf-8', newline='') as handle:
                 writer = csv.writer(handle)
                 writer.writerow(headers)
+                if file_name == 'input_locations.csv':
+                    writer.writerow([
+                        'CUV93429975500_FICTICIA',
+                        '',
+                        '',
+                        'ES',
+                        'Europe/Madrid',
+                        'es_ES',
+                        'Calle Ficticia 123',
+                        '',
+                        'Barcelona',
+                        'BCN',
+                        '08001',
+                        '',
+                        'RG_FICTICIA',
+                        '+34934299755|+34934299756|+34934299757',
+                        '+34934299755',
+                        'profile_2',
+                        'true',
+                        '',
+                        'RG_FICTICIA',
+                        'ROUTE_GROUP',
+                    ])
+                elif file_name == 'input_users.csv':
+                    writer.writerow([
+                        'fictici1@example.com',
+                        '',
+                        '',
+                        'CUV93429975500_FICTICIA',
+                        '84662701',
+                        '+34514662701',
+                        '+34534662701',
+                        '',
+                    ])
+                elif file_name == 'input_workspaces.csv':
+                    writer.writerow([
+                        'WS_FICTICIA_01',
+                        '',
+                        '',
+                        'CUV93429975500_FICTICIA',
+                        '84662702',
+                        '+34514662702',
+                        '+34534662702',
+                        '',
+                    ])
             created.append(path)
 
     policy = v21_dir / 'static_policy.json'
