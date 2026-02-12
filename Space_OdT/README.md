@@ -74,3 +74,61 @@ En modo normal, antes de cada etapa se solicita confirmación:
 - `.artifacts/v2/report.html` (estado anterior/actual por acción)
 - `.artifacts/v2/changes.log` (detallado técnico en JSON lines)
 - `.artifacts/v2/http.har` (only with `--debug-har`)
+
+## V2.1 base (independiente de V2): softphones + bulk provision de sedes
+
+Se añadió una base nueva en `Space_OdT/v21/` totalmente independiente de `Space_OdT/v2/`.
+
+### Objetivo de esta base
+
+Cubrir tareas de cierre manual/post-carga masiva para softphones, incluyendo planificación en bulk de sedes, usuarios y workspaces.
+
+### Comando
+
+```bash
+python -m Space_OdT.cli v21_softphone_bulk_run --out-dir .artifacts --token "<WEBEX_ACCESS_TOKEN>"
+```
+
+Por defecto ejecuta **dry-run** y genera plan de acciones en:
+
+- `.artifacts/v21/plan.csv`
+- `.artifacts/v21/run_state.json`
+
+Para modo apply (base inicial/no-op controlado):
+
+```bash
+python -m Space_OdT.cli v21_softphone_bulk_run --out-dir .artifacts --token "<WEBEX_ACCESS_TOKEN>" --v21-apply
+```
+
+### Inputs V2.1
+
+- `.artifacts/v21/input_locations.csv`
+- `.artifacts/v21/input_users.csv`
+- `.artifacts/v21/input_workspaces.csv`
+- `.artifacts/v21/static_policy.json`
+
+Si faltan, el comando crea plantillas automáticamente.
+
+### Fuera de scope (gestionado por carga masiva Control Hub)
+
+- Alta/Modificación/Supresión usuarios
+- Asignar permisos de llamadas
+- Traslado de usuarios a otro CUV
+- Crear Grupos de usuarios
+- Añadir/Editar Ubicaciones
+- Eliminar Ubicaciones
+- Añadir Espacios de trabajo (Workspace)
+- Modificar/Eliminar Espacios de trabajo
+- Alta/Modificación contactos Webex
+- Alta/Modificar los grupos de recepción de llamadas
+- Agregar locuciones
+- Alta/Modificar el asistente automático
+- Alta/modificar las extensiones de detención de llamada
+- Alta/modificar los grupos de llamadas en espera
+- Alta/Modificación de Grupo de búsqueda
+- Alta de Colas
+- Modificación de Colas
+- Agregar DDIs
+- Asignar DDIs
+
+> Nota: en ocasiones la carga masiva en Control Hub resuelve solo una parte y queda una tarea manual para cierre completo. Esta base v2.1 está pensada para soportar ese cierre manual/scriptable.
