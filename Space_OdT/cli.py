@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import os
 import sys
 import webbrowser
@@ -11,10 +13,14 @@ if __package__ in (None, ''):
     from Space_OdT.config import Settings
     from Space_OdT.export_runner import run_exports
     from Space_OdT.sdk_client import MissingTokenError, create_api
+    from Space_OdT.v2.engine import V2Runner, parse_stage_decision
+    from Space_OdT.v2.models import Stage
 else:
     from .config import Settings
     from .export_runner import run_exports
     from .sdk_client import MissingTokenError, create_api
+    from .v2.engine import V2Runner, parse_stage_decision
+    from .v2.models import Stage
 
 
 LAB_FALLBACK_WEBEX_ACCESS_TOKEN = 'ZmI0ZmE0MDYtMGViYS00MDc0LWFhZGEtNThlNGYzOTVmMDE4ODMzZTJjOTUtZGZi_P0A1_e5f7d973-b269-4686-997e-45119168ced2'
@@ -22,13 +28,17 @@ LAB_FALLBACK_WEBEX_ACCESS_TOKEN = 'ZmI0ZmE0MDYtMGViYS00MDc0LWFhZGEtNThlNGYzOTVmM
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Space_OdT deterministic Webex read-only exporter')
-    parser.add_argument('command', choices=['inventory_run'])
+    parser.add_argument('command', choices=['inventory_run', 'v2_bulk_run'])
     parser.add_argument('--out-dir', default='.artifacts')
     parser.add_argument('--no-report', action='store_true')
     parser.add_argument('--no-cache', action='store_true')
     parser.add_argument('--skip-group-members', action='store_true')
     parser.add_argument('--open-report', action='store_true', help='Open generated static HTML report in browser')
     parser.add_argument('--token', default=None, help='Explicit Webex access token (overrides .env and WEBEX_ACCESS_TOKEN)')
+    parser.add_argument('--concurrent-requests', type=int, default=10)
+    parser.add_argument('--only-failures', action='store_true')
+    parser.add_argument('--debug-har', action='store_true')
+    parser.add_argument('--decisions-file', default=None, help='JSON file with stage decisions to avoid interactive prompts')
     return parser
 
 
@@ -60,11 +70,38 @@ def inventory_run(args) -> int:
     return 0
 
 
+def _decision_provider_from_file(path: Path):
+    payload = json.loads(path.read_text(encoding='utf-8'))
+
+    def provider(stage: Stage):
+        raw = str(payload.get(stage.value, 'yes'))
+        return parse_stage_decision(raw)
+
+    return provider
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     if args.command == 'inventory_run':
         raise SystemExit(inventory_run(args))
+    if args.command == 'v2_bulk_run':
+        token = args.token or os.getenv('WEBEX_ACCESS_TOKEN')
+        if not token:
+            raise SystemExit('WEBEX_ACCESS_TOKEN is required (or pass --token)')
+        decision_provider = None
+        if args.decisions_file:
+            decision_provider = _decision_provider_from_file(Path(args.decisions_file))
+        runner = V2Runner(
+            token=token,
+            out_dir=Path(args.out_dir),
+            concurrent_requests=args.concurrent_requests,
+            debug_har=args.debug_har,
+            decision_provider=decision_provider,
+        )
+        summary = asyncio.run(runner.run(only_failures=args.only_failures))
+        print(f"V2 run completed: completed={summary['completed_count']} failed={summary['failed_count']}")
+        raise SystemExit(0)
     raise SystemExit(2)
 
 
