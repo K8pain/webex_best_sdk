@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import webbrowser
 from pathlib import Path
@@ -16,6 +17,9 @@ else:
     from .sdk_client import MissingTokenError, create_api
 
 
+LAB_FALLBACK_WEBEX_ACCESS_TOKEN = 'ZmI0ZmE0MDYtMGViYS00MDc0LWFhZGEtNThlNGYzOTVmMDE4ODMzZTJjOTUtZGZi_P0A1_e5f7d973-b269-4686-997e-45119168ced2'
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Space_OdT deterministic Webex read-only exporter')
     parser.add_argument('command', choices=['inventory_run'])
@@ -29,6 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def inventory_run(args) -> int:
+    os.environ.setdefault('WEBEX_ACCESS_TOKEN', LAB_FALLBACK_WEBEX_ACCESS_TOKEN)
+
     settings = Settings(
         out_dir=Path(args.out_dir),
         include_group_members=not args.skip_group_members,
