@@ -2,6 +2,13 @@
 
 Deterministic, read-only Webex inventory exporter focused on CSV/JSON outputs.
 
+## V1 behavior
+
+- Uses a fixed method manifest only (no crawling, no SDK introspection).
+- Executes retrieval-only methods (`list/details/read/get/members/capabilities/count/status/errors/history/summary/available_numbers.*`).
+- Resolves IDs automatically from prior exports (`people`, `groups`, `locations`, `workspaces`, `virtual_lines`, etc.).
+- Writes one status record per executed artifact method in `status.csv/json`.
+
 ## Usage
 
 ```bash
@@ -17,11 +24,4 @@ python -m Space_OdT.cli inventory_run --out-dir .artifacts --open-report
 - `.artifacts/cache.json` (optional)
 - `.artifacts/report/index.html` (optional)
 
-## Notes
-
-- Fixed module set; no SDK crawling.
-- Failures create empty exports and status rows.
-- Group members can be skipped with `--skip-group-members`.
-
-
-The static HTML report is generated at `.artifacts/report/index.html` (unless `--no-report` is used).
+The static HTML report shows all modules in a single modern dashboard view (inventory + method status table in the same plane).
