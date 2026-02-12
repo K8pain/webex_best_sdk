@@ -72,6 +72,7 @@ table {{ border-collapse: collapse; width:100%; margin-top:16px; }}
 th,td {{ border:1px solid #ccc; padding:6px; text-align:left; }}
 </style></head>
 <body>
+<div class='wrap'>
 <h1>Space_OdT Export Report</h1>
 <div class='grid'>
   <div class='card'><h2>Foundation</h2><ul>{base_list}</ul></div>
