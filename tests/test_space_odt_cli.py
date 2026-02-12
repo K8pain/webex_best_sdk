@@ -93,3 +93,21 @@ def test_virtual_extensions_module_uses_list_range() -> None:
     spec = next(m for m in MODULE_SPECS if m.name == 'virtual_extensions')
 
     assert spec.list_path == 'telephony.virtual_extensions.list_range'
+
+
+def test_parser_accepts_v2_command() -> None:
+    cli = _import_cli_with_stubs()
+    parser = cli.build_parser()
+    args = parser.parse_args(['v2_bulk_run', '--out-dir', '.artifacts'])
+
+    assert args.command == 'v2_bulk_run'
+    assert args.concurrent_requests == 10
+    assert args.decisions_file is None
+
+
+def test_parser_accepts_decisions_file() -> None:
+    cli = _import_cli_with_stubs()
+    parser = cli.build_parser()
+    args = parser.parse_args(['v2_bulk_run', '--decisions-file', 'decisions.json'])
+
+    assert args.decisions_file == 'decisions.json'
