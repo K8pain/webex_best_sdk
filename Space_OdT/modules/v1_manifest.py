@@ -28,6 +28,7 @@ class ParamSource:
     name: str
     module: str
     field: str
+    required_field: str | None = None
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,11 @@ class ArtifactSpec:
 
 def _id_values(cache: dict[str, list[dict]], source: ParamSource) -> list[Any]:
     rows = cache.get(source.module, [])
-    values = [r.get(source.field) for r in rows if r.get(source.field)]
+    values = [
+        r.get(source.field)
+        for r in rows
+        if r.get(source.field) and (source.required_field is None or r.get(source.required_field))
+    ]
     uniq: list[Any] = []
     seen = set()
     for v in values:
@@ -80,11 +85,29 @@ def _row_from_item(item: dict, method_path: str, kwargs: dict[str, Any]) -> dict
     return row
 
 
+def _is_user_access_error(exc: Exception) -> bool:
+    code = getattr(exc, "code", None)
+    if code == 4003:
+        return True
+    detail = getattr(exc, "detail", None)
+    if detail is not None and getattr(detail, "code", None) == 4003:
+        return True
+    return False
+
+
 def run_artifact(api, spec: ArtifactSpec, cache: dict[str, list[dict]]) -> ModuleResult:
     method = resolve_attr(api, spec.method_path)
     rows: list[dict] = []
     for kwargs in _iter_kwargs(cache, spec):
-        payload = call_with_supported_kwargs(method, **kwargs)
+        try:
+            payload = call_with_supported_kwargs(method, **kwargs)
+        except Exception as exc:
+            # Some person-level endpoints return 4003 (unauthorized/user not found)
+            # for users without Webex Calling entitlements. Skip these entities and
+            # continue with the remaining exportable users.
+            if _is_user_access_error(exc):
+                continue
+            raise
         items = [model_to_dict(i) for i in as_list(payload)]
         if not items and isinstance(payload, object):
             maybe = model_to_dict(payload)
@@ -139,23 +162,34 @@ V1_ARTIFACT_SPECS: list[ArtifactSpec] = [
     ArtifactSpec('virtual_extension_range_details', 'telephony.virtual_extensions.details_range', {},
                  (ParamSource('location_id', 'virtual_extension_ranges', 'location_id'), ParamSource('range_id', 'virtual_extension_ranges', 'id'))),
 
-    ArtifactSpec('person_numbers', 'person_settings.numbers.read', {}, (ParamSource('person_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_permissions_in', 'person_settings.permissions_in.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_permissions_out', 'person_settings.permissions_out.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_out_access_codes', 'person_settings.permissions_out.access_codes.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_out_digit_patterns', 'person_settings.permissions_out.digit_patterns.get_digit_patterns', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_transfer_numbers', 'person_settings.permissions_out.transfer_numbers.read', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_numbers', 'person_settings.numbers.read', {},
+                 (ParamSource('person_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_permissions_in', 'person_settings.permissions_in.read', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_permissions_out', 'person_settings.permissions_out.read', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_out_access_codes', 'person_settings.permissions_out.access_codes.read', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_out_digit_patterns', 'person_settings.permissions_out.digit_patterns.get_digit_patterns', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_transfer_numbers', 'person_settings.permissions_out.transfer_numbers.read', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
 
     ArtifactSpec('workspace_permissions_in', 'workspace_settings.permissions_in.read', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
     ArtifactSpec('workspace_permissions_out', 'workspace_settings.permissions_out.read', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
     ArtifactSpec('workspace_devices', 'workspace_settings.devices.list', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
 
     ArtifactSpec('person_available_numbers_primary', 'person_settings.available_numbers.primary', {}, (ParamSource('location_id', 'people', 'location_id'),)),
-    ArtifactSpec('person_available_numbers_secondary', 'person_settings.available_numbers.secondary', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_call_forward', 'person_settings.available_numbers.call_forward', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_call_intercept', 'person_settings.available_numbers.call_intercept', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_ecbn', 'person_settings.available_numbers.ecbn', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
-    ArtifactSpec('person_available_numbers_fax_message', 'person_settings.available_numbers.fax_message', {}, (ParamSource('entity_id', 'people', 'person_id'),)),
+    ArtifactSpec('person_available_numbers_secondary', 'person_settings.available_numbers.secondary', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_available_numbers_call_forward', 'person_settings.available_numbers.call_forward', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_available_numbers_call_intercept', 'person_settings.available_numbers.call_intercept', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_available_numbers_ecbn', 'person_settings.available_numbers.ecbn', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('person_available_numbers_fax_message', 'person_settings.available_numbers.fax_message', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
 
     ArtifactSpec('virtual_line_available_numbers_available', 'telephony.virtual_lines.available_numbers.available', {}, (ParamSource('virtual_line_id', 'virtual_lines', 'id'),)),
     ArtifactSpec('virtual_line_available_numbers_primary', 'telephony.virtual_lines.available_numbers.primary', {}, (ParamSource('virtual_line_id', 'virtual_lines', 'id'),)),
