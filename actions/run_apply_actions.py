@@ -14,6 +14,8 @@ import subprocess
 import sys
 from typing import Any
 
+from dotenv import load_dotenv
+
 LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 ACTIONS: list[tuple[str, dict[str, str]]] = [
@@ -85,12 +87,25 @@ def _parse_api_calls(action_log: Path) -> list[dict[str, Any]]:
     return calls
 
 
+def _load_token_env_files(repo_root: Path) -> None:
+    """Carga variables de token desde .env sin sobreescribir el entorno existente."""
+    dotenv_candidates = (repo_root / ".env", repo_root / "actions" / ".env")
+    for dotenv_path in dotenv_candidates:
+        if dotenv_path.exists():
+            load_dotenv(dotenv_path=dotenv_path, override=False)
+
+
 def _resolve_token(args: argparse.Namespace) -> str | None:
+    repo_root = Path(__file__).resolve().parents[1]
+
     if args.token:
         return args.token
+
+    _load_token_env_files(repo_root)
     env_token = os.getenv("WEBEX_ACCESS_TOKEN") or os.getenv("WEBEX_TOKEN")
     if env_token:
         return env_token
+
     if args.token_file:
         token_path = Path(args.token_file)
         if token_path.exists():
