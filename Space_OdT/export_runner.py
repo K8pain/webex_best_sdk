@@ -54,9 +54,9 @@ def _write_cache_if_enabled(settings: Settings, cache_entities: dict) -> None:
     write_json(settings.out_dir / 'cache.json', payload)
 
 
-def _write_report_if_enabled(settings: Settings, status_rows: list[dict], module_counts: dict[str, int]) -> None:
+def _write_report_if_enabled(settings: Settings, status_rows: list[dict], module_counts: dict[str, int]) -> Path | None:
     if not settings.write_report:
-        return
+        return None
     report_file = settings.out_dir / 'report' / 'index.html'
     rows_html = ''.join(
         f"<tr><td>{row['module']}</td><td>{row['result']}</td><td>{row['count']}</td><td>{row['error']}</td></tr>"
@@ -74,6 +74,7 @@ def _write_report_if_enabled(settings: Settings, status_rows: list[dict], module
 """.strip()
     report_file.parent.mkdir(parents=True, exist_ok=True)
     report_file.write_text(html, encoding='utf-8')
+    return report_file
 
 
 def run_exports(api, settings: Settings) -> dict:
@@ -134,11 +135,12 @@ def run_exports(api, settings: Settings) -> dict:
     write_json(exports_dir / 'status.json', status_rows)
 
     _write_cache_if_enabled(settings, cache_entities)
-    _write_report_if_enabled(settings, status_rows, module_counts)
+    report_path = _write_report_if_enabled(settings, status_rows, module_counts)
 
     return {
         'out_dir': str(settings.out_dir),
         'exports_dir': str(exports_dir),
         'status_count': len(status_rows),
         'module_counts': module_counts,
+        'report_path': str(report_path) if report_path else '',
     }

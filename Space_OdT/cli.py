@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import webbrowser
 from pathlib import Path
 
 from .config import Settings
@@ -15,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--no-report', action='store_true')
     parser.add_argument('--no-cache', action='store_true')
     parser.add_argument('--skip-group-members', action='store_true')
+    parser.add_argument('--open-report', action='store_true', help='Open generated static HTML report in browser')
     return parser
 
 
@@ -35,6 +37,10 @@ def inventory_run(args) -> int:
         summary = run_exports(api=api, settings=settings)
 
     print(f"Exports generated under {summary['exports_dir']}")
+    if summary.get('report_path'):
+        print(f"Static report: {summary['report_path']}")
+        if args.open_report:
+            webbrowser.open(Path(summary['report_path']).resolve().as_uri())
     for name, count in summary['module_counts'].items():
         print(f'- {name}: {count}')
     return 0
