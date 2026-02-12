@@ -50,6 +50,10 @@ dependencies = [
     "tenacity>=8.2.3,<9",
 ]
 
+
+[project.scripts]
+inventory_run = "Space_OdT.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/jeokrohn/wxc_sdk"
 Documentation = "https://wxc-sdk.readthedocs.io"
