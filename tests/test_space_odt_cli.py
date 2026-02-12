@@ -2,6 +2,8 @@ import importlib
 import sys
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 
 def _import_cli_with_stubs():
     fake_config = ModuleType('Space_OdT.config')
@@ -111,3 +113,33 @@ def test_parser_accepts_decisions_file() -> None:
     args = parser.parse_args(['v2_bulk_run', '--decisions-file', 'decisions.json'])
 
     assert args.decisions_file == 'decisions.json'
+
+
+def test_main_v2_reports_missing_templates_and_exits_2(monkeypatch, capsys, tmp_path) -> None:
+    cli = _import_cli_with_stubs()
+
+    fake_v2_engine = ModuleType('Space_OdT.v2.engine')
+
+    class MissingV2InputsError(RuntimeError):
+        pass
+
+    class FakeRunner:
+        def __init__(self, **kwargs):
+            pass
+
+        async def run(self, *, only_failures=False):
+            raise MissingV2InputsError('Se crearon archivos plantilla requeridos para V2')
+
+    fake_v2_engine.MissingV2InputsError = MissingV2InputsError
+    fake_v2_engine.V2Runner = FakeRunner
+    fake_v2_engine.parse_stage_decision = lambda raw: ('yes', None)
+    monkeypatch.setitem(sys.modules, 'Space_OdT.v2.engine', fake_v2_engine)
+
+    monkeypatch.setenv('WEBEX_ACCESS_TOKEN', 'token')
+    monkeypatch.setattr(sys, 'argv', ['prog', 'v2_bulk_run', '--out-dir', str(tmp_path)])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 2
+    assert 'Se crearon archivos plantilla requeridos para V2' in capsys.readouterr().out

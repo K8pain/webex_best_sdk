@@ -21,6 +21,7 @@ from wxc_sdk.telephony.callqueue.agents import AgentCallQueueSetting
 
 from .io import (
     append_failures,
+    bootstrap_v2_inputs,
     load_input_records,
     load_policy,
     load_run_state,
@@ -33,6 +34,10 @@ from .io import (
 from .models import ChangeEntry, FailureEntry, InputRecord, RecordResult, Stage, StageDecision
 
 DecisionProvider = Callable[[Stage], tuple[StageDecision, str | None]]
+
+
+class MissingV2InputsError(RuntimeError):
+    """Raised when required V2 input files are missing and have been bootstrapped."""
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -82,7 +87,14 @@ class V2Runner:
 
     async def run(self, *, only_failures: bool = False) -> dict[str, Any]:
         v2_dir = self.out_dir / 'v2'
-        v2_dir.mkdir(parents=True, exist_ok=True)
+        created_templates = bootstrap_v2_inputs(v2_dir)
+        if created_templates:
+            created_lines = '\n'.join(f'  - {path}' for path in created_templates)
+            raise MissingV2InputsError(
+                'Se crearon archivos plantilla requeridos para V2. '
+                'Completá los archivos y relanzá el comando:\n'
+                f'{created_lines}'
+            )
         policy = load_policy(v2_dir / 'static_policy.json')
         records = load_input_records(v2_dir / 'input_softphones.csv')
         resolvers = load_v1_maps(self.out_dir / 'v1_inventory')
