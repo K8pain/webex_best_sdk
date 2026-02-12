@@ -49,7 +49,6 @@ class Settings:
         'workspace_permissions_in',
         'workspace_permissions_out',
         'workspace_devices',
-        'person_available_numbers_available',
         'person_available_numbers_primary',
         'person_available_numbers_secondary',
         'person_available_numbers_call_forward',
