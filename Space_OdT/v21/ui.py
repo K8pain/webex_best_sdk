@@ -175,79 +175,104 @@ def _html_page() -> str:
         for field in LOCATION_HEADERS
     )
     return f"""<!doctype html>
-<html lang=\"es\">
+<html lang="es">
 <head>
-  <meta charset=\"utf-8\" />
-  <title>Space_OdT v2.1 location jobs</title>
+  <meta charset="utf-8" />
+  <title>Space_OdT v2.1 location changes</title>
   <style>
-    body {{ font-family: Arial, sans-serif; margin: 20px; max-width: 1100px; }}
-    .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 14px; }}
-    .progress {{ width: 100%; height: 18px; background: #eee; border-radius: 12px; overflow: hidden; }}
-    .progress > div {{ height: 100%; background: #3d7eff; width: 0%; }}
-    button {{ margin-right: 8px; }}
-    table {{ border-collapse: collapse; width: 100%; }}
-    th, td {{ border: 1px solid #ddd; padding: 6px; font-size: 12px; }}
-    pre {{ background: #f6f6f6; padding: 8px; border-radius: 6px; overflow-x: auto; max-height: 250px; }}
+    :root {{
+      --bg: #0b5f2a;
+      --bg-dark: #08491f;
+      --card: #0f6b31;
+      --card-2: #0d5b2a;
+      --line: #2ea15a;
+      --text: #f3fff6;
+      --muted: #c9f5d8;
+      --accent: #ffde59;
+      --danger: #ffd2d2;
+      --progress: #31d46f;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      font-family: Inter, Arial, sans-serif;
+      margin: 0;
+      background: linear-gradient(180deg, var(--bg) 0%, var(--bg-dark) 100%);
+      color: var(--text);
+    }}
+    .wrap {{ max-width: 1080px; margin: 0 auto; padding: 20px; }}
+    h1 {{ margin-top: 0; color: var(--accent); letter-spacing: .3px; }}
+    p.lead {{ color: var(--muted); margin-top: -6px; }}
+    .card {{
+      background: linear-gradient(180deg, var(--card) 0%, var(--card-2) 100%);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+    }}
+    .actions {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }}
+    button {{
+      border: 1px solid #1d8e45;
+      background: #18863f;
+      color: #fff;
+      border-radius: 8px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }}
+    button.secondary {{ background: #126e34; }}
+    button.warning {{ background: #8d6b00; border-color: #a37c00; color: #fff8d2; }}
+    input[type=file] {{ color: var(--muted); }}
+    .progress {{ width: 100%; height: 18px; background: #093d1d; border-radius: 12px; overflow: hidden; border: 1px solid #1d8e45; }}
+    .progress > div {{ height: 100%; background: var(--progress); width: 0%; }}
+    table {{ border-collapse: collapse; width: 100%; margin-top: 8px; }}
+    th, td {{ border: 1px solid #1e8842; padding: 6px; font-size: 12px; }}
+    th {{ background: #0f592b; }}
+    pre {{ background: #072f17; color: #d9ffe6; padding: 10px; border-radius: 8px; overflow-x: auto; max-height: 280px; border: 1px solid #1e8842; }}
+    .error {{ color: var(--danger); }}
   </style>
 </head>
 <body>
-  <h1>Space_OdT v2.1 - Location Bulk Jobs</h1>
+  <div class="wrap">
+    <h1>Space_OdT v2.1 · Cambios de sedes</h1>
+    <p class="lead">UI enfocada solo en aplicar cambios: cargar archivo, ejecutar y revisar estado + respuesta de API.</p>
 
-  <div class=\"card\">
-    <h3>Estado actual (antes de cargar)</h3>
-    <button onclick=\"loadCurrentState()\">Ver estado actual</button>
-    <div id=\"currentStateInfo\"></div>
-    <div id=\"currentStateTable\"></div>
-  </div>
+    <div class="card">
+      <h3>1) Cargar archivo de cambios</h3>
+      <input id="file" type="file" accept=".csv,.json" />
+      <div class="actions">
+        <button onclick="createJob()">Crear job</button>
+      </div>
+      <div id="uploadInfo"></div>
+      <div id="preview"></div>
+    </div>
 
-  <div class=\"card\">
-    <h3>Upload</h3>
-    <input id=\"file\" type=\"file\" accept=\".csv,.json\" />
-    <button onclick=\"createJob()\">Crear job</button>
-    <div id=\"uploadInfo\"></div>
-    <div id=\"preview\"></div>
-  </div>
+    <div class="card">
+      <h3>2) Ejecutar cambio</h3>
+      <div class="actions">
+        <button onclick="startJob()">Aplicar cambios</button>
+        <button class="secondary" onclick="refreshJob()">Actualizar estado</button>
+        <button class="warning" onclick="showFinalConfig()">Ver respuesta API</button>
+      </div>
+      <div id="jobStatus"></div>
+      <div class="progress"><div id="bar"></div></div>
+      <div id="errorSummary"></div>
+      <pre id="finalConfig"></pre>
+    </div>
 
-  <div class=\"card\">
-    <h3>Campos obligatorios</h3>
-    <ul>{required}</ul>
-  </div>
-
-  <div class=\"card\">
-    <h3>Ejecución (acción unitaria)</h3>
-    <button onclick=\"startJob()\">Apply</button>
-    <button onclick=\"refreshJob()\">Actualizar estado</button>
-    <div id=\"jobStatus\"></div>
-    <div class=\"progress\"><div id=\"bar\"></div></div>
-    <div id=\"errorSummary\"></div>
-    <button onclick=\"showFinalConfig()\">Ver configuración final</button>
-    <pre id=\"finalConfig\"></pre>
-    <h4>Confirmación ejecución asíncrona</h4>
-    <pre id=\"asyncInfo\"></pre>
+    <div class="card">
+      <h3>Campos esperados</h3>
+      <ul>{required}</ul>
+    </div>
   </div>
 
   <script>
     let currentJobId = null;
 
     window.addEventListener('DOMContentLoaded', () => {{
-      loadCurrentState();
-      loadAsyncInfo();
+      const output = document.getElementById('finalConfig');
+      output.textContent = 'Aquí se verá únicamente: status + api_response';
     }});
-
-    async function loadCurrentState() {{
-      const r = await fetch('/api/location-state/current');
-      const data = await r.json();
-      const source = data.source || 'none';
-      const items = data.items || [];
-      document.getElementById('currentStateInfo').innerHTML = `Fuente: <code>${{source}}</code> | Items: <b>${{items.length}}</b>`;
-      renderTable('currentStateTable', items);
-    }}
-
-    async function loadAsyncInfo() {{
-      const r = await fetch('/api/location-jobs/async-info');
-      const data = await r.json();
-      document.getElementById('asyncInfo').textContent = JSON.stringify(data, null, 2);
-    }}
 
     async function createJob() {{
       const fileEl = document.getElementById('file');
@@ -260,7 +285,7 @@ def _html_page() -> str:
       const r = await fetch('/api/location-jobs', {{ method: 'POST', body: fd }});
       const data = await r.json();
       if (data.error) {{
-        document.getElementById('uploadInfo').innerHTML = '<span style="color:red">' + data.error + '</span>';
+        document.getElementById('uploadInfo').innerHTML = '<span class="error">' + data.error + '</span>';
         return;
       }}
       currentJobId = data.job.job_id;
@@ -302,9 +327,30 @@ def _html_page() -> str:
         document.getElementById('finalConfig').textContent = data.error;
         return;
       }}
-      document.getElementById('finalConfig').textContent = JSON.stringify(data, null, 2);
+      const simplified = toStatusAndApiResponse(data);
+      document.getElementById('finalConfig').textContent = JSON.stringify(simplified, null, 2);
       const errors = data.totals?.rejected || 0;
       document.getElementById('errorSummary').innerHTML = `Errores rechazados: <b>${{errors}}</b>`;
+    }}
+
+    function toStatusAndApiResponse(payload) {{
+      const status = payload?.job?.status || payload?.status || 'unknown';
+      const apiResponse = payload?.remote_final_state?.items || payload?.api_response || [];
+      return {{
+        status,
+        api_response: sanitizeApiResponse(apiResponse),
+      }};
+    }}
+
+    function sanitizeApiResponse(payload) {{
+      if (!payload || typeof payload !== 'object') return payload;
+      if (Array.isArray(payload)) return payload.map(item => sanitizeApiResponse(item));
+      const out = {{}};
+      Object.entries(payload).forEach(([key, value]) => {{
+        if (key === 'before' || key === 'after' || key === 'changed' || key === 'action') return;
+        out[key] = sanitizeApiResponse(value);
+      }});
+      return out;
     }}
 
     function renderJob(job) {{
@@ -334,3 +380,4 @@ def _html_page() -> str:
 </body>
 </html>
 """
+
