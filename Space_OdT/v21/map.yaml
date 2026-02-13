@@ -1,6 +1,4 @@
 schema_version: '1.0'
-source_workbook: 'Libro2.xlsx'
-generated_from: 'xlsx_field_map_libro2_webex.json'
 records_count: 27
 allowed_params_count: 48
 
