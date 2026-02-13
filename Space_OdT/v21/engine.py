@@ -4,6 +4,7 @@ import asyncio
 import csv
 import datetime as dt
 import json
+import os
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -152,8 +153,8 @@ class V21Runner:
         return summary.__dict__
 
     def create_location_job(self, *, rows: list[dict[str, Any]], entity_type: str = 'location') -> LocationBulkJob:
-        if entity_type != 'location':
-            raise ValueError('entity_type no soportado en v21 (usar location)')
+        if entity_type not in {'location', 'location_wbxc'}:
+            raise ValueError('entity_type no soportado en v21 (usar location o location_wbxc)')
         job_id = str(uuid.uuid4())
         created_at = dt.datetime.now(dt.timezone.utc).isoformat()
         job_dir = self.jobs_dir / job_id
@@ -230,7 +231,7 @@ class V21Runner:
     async def process_location_job(self, job_id: str, *, chunk_size: int = 200, max_concurrency: int = 20) -> dict[str, Any]:
         job = self.get_job(job_id)
         if job.entity_type != 'location':
-            raise ValueError('Solo location está habilitado en v21')
+            raise ValueError('Este job no es de tipo location')
         if job.status == 'running':
             return job.to_dict()
 
@@ -281,6 +282,152 @@ class V21Runner:
         self._write_checkpoint(job)
         summary['job'] = job.to_dict()
         return summary
+
+    async def process_location_wbxc_job(self, job_id: str, *, chunk_size: int = 200, max_concurrency: int = 20) -> dict[str, Any]:
+        job = self.get_job(job_id)
+        if job.entity_type != 'location_wbxc':
+            raise ValueError('Este job no es de tipo location_wbxc')
+        if job.status == 'running':
+            return job.to_dict()
+
+        job.status = 'running'
+        self.save_job(job)
+        rows_payload = json.loads(Path(job.input_path).read_text(encoding='utf-8'))
+        rows = [self._location_input_from_job_row(payload, index + 1) for index, payload in enumerate(rows_payload)]
+
+        job_dir = self.jobs_dir / job_id
+        results_csv = job_dir / 'results.csv'
+        pending_csv = job_dir / 'pending_rows.csv'
+        rejected_csv = job_dir / 'rejected_rows.csv'
+        final_state_json = job_dir / 'final_state.json'
+
+        self._init_result_files(results_csv, pending_csv, rejected_csv)
+        snapshots: list[dict[str, Any]] = []
+
+        start_offset = int(job.cursor.get('offset', 0))
+        async with AsWebexSimpleApi(tokens=self.token, concurrent_requests=max_concurrency) as api:
+            locations_api = AsLocationsApi(session=api.session)
+            await self._call_logged('api.people.me', api.people.me())
+
+            offset = start_offset
+            while offset < len(rows):
+                chunk = rows[offset : offset + chunk_size]
+                chunk_results = await self._process_wbxc_chunk(
+                    api=api,
+                    locations_api=locations_api,
+                    rows=chunk,
+                    max_concurrency=max_concurrency,
+                    snapshots=snapshots,
+                )
+                self._append_results(rows=chunk_results, results_csv=results_csv, pending_csv=pending_csv, rejected_csv=rejected_csv)
+                self._update_totals(job, chunk_results)
+                offset += len(chunk)
+                job.cursor = {'offset': offset}
+                self.save_job(job)
+                self._write_checkpoint(job)
+
+        summary = {
+            'job': job.to_dict(),
+            'totals': job.totals,
+            'remote_final_state': {'items': snapshots},
+        }
+        save_json(final_state_json, summary)
+        save_json(self.v21_dir / 'results_locations_wbxc.json', {'items': snapshots})
+        job.status = 'completed'
+        self.save_job(job)
+        self._write_checkpoint(job)
+        summary['job'] = job.to_dict()
+        return summary
+
+    async def _process_wbxc_chunk(
+        self,
+        *,
+        api: AsWebexSimpleApi,
+        locations_api: AsLocationsApi,
+        rows: list[LocationInput],
+        max_concurrency: int,
+        snapshots: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        sem = asyncio.Semaphore(max_concurrency)
+
+        async def worker(row: LocationInput) -> dict[str, Any]:
+            async with sem:
+                result = await self._enable_location_for_wbxc(api=api, locations_api=locations_api, row=row)
+                if result.get('remote_id'):
+                    snapshots.append(result.get('api_response') or {'id': result.get('remote_id')})
+                return result
+
+        return await asyncio.gather(*(worker(row) for row in rows), return_exceptions=False)
+
+    async def _enable_location_for_wbxc(
+        self,
+        *,
+        api: AsWebexSimpleApi,
+        locations_api: AsLocationsApi,
+        row: LocationInput,
+    ) -> dict[str, Any]:
+        location_key = self._stable_location_key(row)
+        try:
+            self._validate_required_fields(row)
+            location_id = row.location_id
+            if not location_id:
+                existing = await self._call_logged(
+                    'locations_api.by_name',
+                    locations_api.by_name(row.location_name, org_id=row.org_id),
+                )
+                if existing is None or not existing.location_id:
+                    raise ValueError(f'row {row.row_number}: no se encontró location_id para {row.location_name}')
+                location_id = existing.location_id
+
+            body = {
+                'id': location_id,
+                'name': row.location_name,
+                'timeZone': row.payload.get('time_zone') or '',
+                'preferredLanguage': row.payload.get('preferred_language') or '',
+                'announcementLanguage': row.payload.get('announcement_language') or '',
+                'address': {
+                    'address1': row.payload.get('address1') or '',
+                    'city': row.payload.get('city') or '',
+                    'state': row.payload.get('state') or '',
+                    'postalCode': row.payload.get('postal_code') or '',
+                    'country': row.payload.get('country') or '',
+                },
+            }
+            if row.payload.get('address2'):
+                body['address']['address2'] = row.payload.get('address2')
+
+            params = row.org_id and {'orgId': row.org_id} or None
+            verify_ssl = os.getenv('SPACE_ODT_VERIFY_SSL', 'false').lower() in {'1', 'true', 'yes'}
+            data = await self._call_logged(
+                'telephony.config.locations.enable_for_calling',
+                api.session.rest_post(
+                    url=api.session.ep('telephony/config/locations'),
+                    json=body,
+                    params=params,
+                    ssl=verify_ssl,
+                ),
+            )
+            remote_id = (data or {}).get('id') or location_id
+            return {
+                'row_number': row.row_number,
+                'location_key': location_key,
+                'status': 'success',
+                'remote_id': remote_id,
+                'error_classification': None,
+                'error_type': None,
+                'error': None,
+                'api_response': data,
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {
+                'row_number': row.row_number,
+                'location_key': location_key,
+                'status': 'rejected',
+                'remote_id': None,
+                'error_classification': self._classify_error(exc),
+                'error_type': type(exc).__name__,
+                'error': str(exc),
+            }
 
     async def _process_chunk(
         self,

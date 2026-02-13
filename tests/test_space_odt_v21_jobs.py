@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from Space_OdT.v21.engine import LocationBulkJob, V21Runner
 from Space_OdT.v21.ui import _run_job_background
@@ -91,3 +92,77 @@ def test_v21_verbose_log_writer_creates_jsonl(tmp_path: Path):
     content = log_path.read_text(encoding='utf-8')
     assert '"event": "request"' in content
     assert '"method": "api.people.me"' in content
+
+
+def test_wbxc_requires_create_fields(tmp_path: Path):
+    runner = V21Runner(token='token', out_dir=tmp_path)
+    row = runner._location_input_from_job_row({'location_name': 'Site A'}, row_number=1)
+
+    async def _call():
+        return await runner._enable_location_for_wbxc(api=SimpleNamespace(), locations_api=SimpleNamespace(), row=row)
+
+    import asyncio
+
+    result = asyncio.run(_call())
+    assert result['status'] == 'rejected'
+    assert result['error_type'] == 'ValueError'
+
+
+def test_wbxc_call_uses_async_rest_post_with_ssl_toggle(monkeypatch, tmp_path: Path):
+    runner = V21Runner(token='token', out_dir=tmp_path)
+    row = runner._location_input_from_job_row(
+        {
+            'location_name': 'Denver',
+            'location_id': 'loc-id',
+            'time_zone': 'America/Chicago',
+            'preferred_language': 'en_us',
+            'announcement_language': 'fr_fr',
+            'address1': '771 Alder Drive',
+            'city': 'Milpitas',
+            'state': 'CA',
+            'postal_code': '95035',
+            'country': 'US',
+        },
+        row_number=1,
+    )
+
+    class DummySession:
+        def __init__(self):
+            self.calls = []
+
+        def ep(self, path: str):
+            return f'https://webexapis.com/v1/{path}'
+
+        async def rest_post(self, **kwargs):
+            self.calls.append(kwargs)
+            return {'id': 'enabled-loc'}
+
+    class DummyApi:
+        def __init__(self):
+            self.session = DummySession()
+
+    api = DummyApi()
+
+    async def passthrough(method_name, awaitable):
+        return await awaitable
+
+    monkeypatch.setattr(runner, '_call_logged', passthrough)
+    monkeypatch.setenv('SPACE_ODT_VERIFY_SSL', 'false')
+
+    import asyncio
+
+    result = asyncio.run(
+        runner._enable_location_for_wbxc(
+            api=api,
+            locations_api=SimpleNamespace(),
+            row=row,
+        )
+    )
+
+    assert result['status'] == 'success'
+    assert api.session.calls
+    sent = api.session.calls[0]
+    assert sent['url'] == 'https://webexapis.com/v1/telephony/config/locations'
+    assert sent['ssl'] is False
+    assert sent['json']['id'] == 'loc-id'
+    assert sent['json']['address']['address1'] == '771 Alder Drive'

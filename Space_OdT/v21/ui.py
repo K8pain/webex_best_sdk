@@ -71,7 +71,8 @@ def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: i
             if parsed.path == '/api/location-jobs':
                 try:
                     rows, preview = self._parse_upload()
-                    job = runner.create_location_job(rows=rows, entity_type='location')
+                    entity_type = self.headers.get('X-Entity-Type', 'location').strip() or 'location'
+                    job = runner.create_location_job(rows=rows, entity_type=entity_type)
                     self._send({'job': job.to_dict(), 'count': len(rows), 'preview': preview})
                 except Exception as exc:  # noqa: BLE001
                     self._send({'error': str(exc)}, status=400)
@@ -133,7 +134,11 @@ def _run_job_background(runner: V21Runner, job_id: str) -> None:
     import asyncio
 
     try:
-        asyncio.run(runner.process_location_job(job_id, chunk_size=200, max_concurrency=20))
+        job = runner.get_job(job_id)
+        if job.entity_type == 'location_wbxc':
+            asyncio.run(runner.process_location_wbxc_job(job_id, chunk_size=200, max_concurrency=20))
+        else:
+            asyncio.run(runner.process_location_job(job_id, chunk_size=200, max_concurrency=20))
     except Exception:  # noqa: BLE001
         job = runner.get_job(job_id)
         job.status = 'failed'
@@ -199,7 +204,14 @@ def _html_page() -> str:
       background: linear-gradient(180deg, var(--bg) 0%, var(--bg-dark) 100%);
       color: var(--text);
     }}
+    .layout {{ display: flex; min-height: 100vh; }}
+    .sidebar {{ width: 260px; background: #063617; border-right: 1px solid #1f7f3f; padding: 16px 12px; }}
+    .content {{ flex: 1; }}
     .wrap {{ max-width: 1080px; margin: 0 auto; padding: 20px; }}
+    .menu-title {{ font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: #96e5b3; margin-bottom: 8px; }}
+    .menu-btn {{ width: 100%; margin-bottom: 8px; text-align: left; background: #0f592b; border: 1px solid #1d8e45; }}
+    .menu-btn.active {{ background: #18863f; border-color: #31d46f; }}
+    .hidden {{ display: none; }}
     h1 {{ margin-top: 0; color: var(--accent); letter-spacing: .3px; }}
     p.lead {{ color: var(--muted); margin-top: -6px; }}
     .card {{
@@ -233,11 +245,18 @@ def _html_page() -> str:
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Space_OdT v2.1 · Cambios de sedes</h1>
-    <p class="lead">UI enfocada solo en aplicar cambios: cargar archivo, ejecutar y revisar estado + respuesta de API.</p>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="menu-title">Acciones</div>
+      <button id="menu-alta-sedes" class="menu-btn active" onclick="selectSection('location')">Alta_Sedes</button>
+      <button id="menu-alta-sedes-wbxc" class="menu-btn" onclick="selectSection('location_wbxc')">Alta_Sedes+WBXC</button>
+    </aside>
+    <main class="content">
+    <div class="wrap">
+    <h1 id="title">Space_OdT v2.1 · Alta_Sedes</h1>
+    <p id="subtitle" class="lead">Carga CSV/JSON para alta o actualización de sedes.</p>
 
-    <div class="card">
+    <div class="card" id="shared-upload-card">
       <h3>1) Cargar archivo de cambios</h3>
       <input id="file" type="file" accept=".csv,.json" />
       <div class="actions">
@@ -247,7 +266,7 @@ def _html_page() -> str:
       <div id="preview"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="shared-run-card">
       <h3>2) Ejecutar cambio</h3>
       <div class="actions">
         <button onclick="startJob()">Aplicar cambios</button>
@@ -265,14 +284,36 @@ def _html_page() -> str:
       <ul>{required}</ul>
     </div>
   </div>
+  </main>
+  </div>
 
   <script>
     let currentJobId = null;
+    let currentSection = 'location';
 
     window.addEventListener('DOMContentLoaded', () => {{
       const output = document.getElementById('finalConfig');
       output.textContent = 'Aquí se verá únicamente: status + api_response';
     }});
+
+    function selectSection(section) {{
+      currentSection = section;
+      currentJobId = null;
+      document.getElementById('uploadInfo').innerHTML = '';
+      document.getElementById('preview').innerHTML = '';
+      document.getElementById('jobStatus').innerHTML = '';
+      document.getElementById('bar').style.width = '0%';
+      document.getElementById('errorSummary').innerHTML = '';
+      document.getElementById('finalConfig').textContent = 'Aquí se verá únicamente: status + api_response';
+
+      const isWbxc = section === 'location_wbxc';
+      document.getElementById('menu-alta-sedes').classList.toggle('active', !isWbxc);
+      document.getElementById('menu-alta-sedes-wbxc').classList.toggle('active', isWbxc);
+      document.getElementById('title').textContent = isWbxc ? 'Space_OdT v2.1 · Alta_Sedes+WBXC' : 'Space_OdT v2.1 · Alta_Sedes';
+      document.getElementById('subtitle').textContent = isWbxc
+        ? 'Carga CSV/JSON para habilitar sedes en Webex Calling usando endpoint oficial.'
+        : 'Carga CSV/JSON para alta o actualización de sedes.';
+    }}
 
     async function createJob() {{
       const fileEl = document.getElementById('file');
@@ -282,7 +323,7 @@ def _html_page() -> str:
       }}
       const fd = new FormData();
       fd.append('file', fileEl.files[0]);
-      const r = await fetch('/api/location-jobs', {{ method: 'POST', body: fd }});
+      const r = await fetch('/api/location-jobs', {{ method: 'POST', body: fd, headers: {{ 'X-Entity-Type': currentSection }} }});
       const data = await r.json();
       if (data.error) {{
         document.getElementById('uploadInfo').innerHTML = '<span class="error">' + data.error + '</span>';
@@ -380,4 +421,3 @@ def _html_page() -> str:
 </body>
 </html>
 """
-
