@@ -121,6 +121,19 @@ def run_artifact(api, spec: ArtifactSpec, cache: dict[str, list[dict]]) -> Modul
 V1_ARTIFACT_SPECS: list[ArtifactSpec] = [
     ArtifactSpec('calling_locations', 'telephony.locations.list', {}),
     ArtifactSpec('calling_locations_details', 'telephony.locations.details', {}, (ParamSource('location_id', 'calling_locations', 'id'),)),
+
+    ArtifactSpec('location_details', 'locations.details', {},
+                 (ParamSource('location_id', 'locations', 'location_id'),)),
+    ArtifactSpec('people_details', 'people.details', {'calling_data': True},
+                 (ParamSource('person_id', 'people', 'person_id'),)),
+    ArtifactSpec('workspace_details', 'workspaces.details', {},
+                 (ParamSource('workspace_id', 'workspaces', 'id'),)),
+    ArtifactSpec('location_pstn_connection', 'telephony.pstn.read', {},
+                 (ParamSource('location_id', 'calling_locations', 'id'),)),
+    ArtifactSpec('person_call_forwarding', 'person_settings.forwarding.read', {},
+                 (ParamSource('entity_id', 'people', 'person_id', required_field='location_id'),)),
+    ArtifactSpec('workspace_call_forwarding', 'workspace_settings.forwarding.read', {},
+                 (ParamSource('entity_id', 'workspaces', 'id'),)),
     ArtifactSpec('group_members', 'groups.members', {}, (ParamSource('group_id', 'groups', 'group_id'),)),
     ArtifactSpec('license_assigned_users', 'licenses.assigned_users', {}, (ParamSource('license_id', 'licenses', 'license_id'),)),
     ArtifactSpec('workspace_capabilities', 'workspaces.capabilities', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
@@ -177,6 +190,7 @@ V1_ARTIFACT_SPECS: list[ArtifactSpec] = [
 
     ArtifactSpec('workspace_permissions_in', 'workspace_settings.permissions_in.read', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
     ArtifactSpec('workspace_permissions_out', 'workspace_settings.permissions_out.read', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
+    ArtifactSpec('workspace_numbers', 'workspace_settings.numbers.read', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
     ArtifactSpec('workspace_devices', 'workspace_settings.devices.list', {}, (ParamSource('workspace_id', 'workspaces', 'id'),)),
 
     ArtifactSpec('person_available_numbers_primary', 'person_settings.available_numbers.primary', {}, (ParamSource('location_id', 'people', 'location_id'),)),
