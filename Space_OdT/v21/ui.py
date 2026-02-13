@@ -172,7 +172,7 @@ def _rows_from_multipart(raw: bytes, boundary: bytes) -> list[dict]:
 
 def _html_page() -> str:
     required = ''.join(
-        f"<li><code>{field}</code>{' <b>(obligatorio)</b>' if field in LOCATION_REQUIRED_CREATE_FIELDS else ''}</li>"
+        f"<li><code>{field}</code></li>"
         for field in LOCATION_HEADERS
     )
     return f"""<!doctype html>
@@ -196,11 +196,12 @@ def _html_page() -> str:
     }}
     * {{ box-sizing: border-box; }}
     body {{ font-family: Inter, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }}
-    .layout {{ display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }}
+    .layout {{ display: grid; grid-template-columns: 300px 1fr; min-height: 100vh; }}
     .sidebar {{ background: var(--sidebar); border-right: 1px solid #176a35; padding: 16px 12px; }}
     .brand {{ color: var(--accent); margin: 0 0 14px; font-size: 18px; }}
     .menu button {{ display:block; width:100%; text-align:left; margin: 0 0 8px; border:1px solid #176a35; background:#0a4a24; color:var(--text); border-radius:8px; padding:10px; cursor:pointer; font-weight:600; }}
     .menu button.active {{ background: var(--sidebar-active); }}
+    .menu small {{ display:block; color: var(--muted); font-weight:500; margin-top:4px; }}
     .content {{ padding: 20px; }}
     .card {{ background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }}
     h1 {{ margin-top: 0; color: var(--accent); }}
@@ -217,6 +218,8 @@ def _html_page() -> str:
     th {{ background: #0f592b; }}
     pre {{ background: #072f17; color: #d9ffe6; padding: 10px; border-radius: 8px; overflow-x: auto; max-height: 280px; border: 1px solid #1e8842; }}
     .error {{ color: var(--danger); }}
+    .badge {{ border: 1px solid #e2c028; background: #7d6500; color: #ffefb0; font-size: 11px; border-radius: 999px; padding: 2px 8px; margin-left: 6px; }}
+    .muted {{ color: var(--muted); }}
     .hidden {{ display: none; }}
   </style>
 </head>
@@ -225,13 +228,24 @@ def _html_page() -> str:
     <aside class="sidebar">
       <h2 class="brand">Space_OdT v2.1</h2>
       <nav class="menu">
-        <button id="menu-alta" class="active" onclick="selectAction('alta_sedes')">Alta_Sedes</button>
-        <button id="menu-wbxc" onclick="selectAction('alta_sedes_wbxc')">Alta_Sedes+WBXC</button>
+        <button id="menu-crear_activar_ubicacion_wbxc" class="active" onclick="selectAction('crear_activar_ubicacion_wbxc')">Crear y activar ubicación Webex Calling<small>Alta de sede + WBXC habilitado</small></button>
+        <button id="menu-listar_location_ids" onclick="selectAction('listar_location_ids')">Lista IDs de ubicaciones creadas<small>Consulta locationId + cabeceras</small></button>
+        <button id="menu-listar_route_groups" onclick="selectAction('listar_route_groups')">Saber valor de routegroupId<small>Identificación RG_CTTI_PRE / RG_NDV</small></button>
+        <button id="menu-configurar_pstn" onclick="selectAction('configurar_pstn')">Configurar PSTN de ubicación<small>premiseRouteType = ROUTE_GROUP</small></button>
+        <button id="menu-alta_numeraciones" onclick="selectAction('alta_numeraciones')">Alta numeraciones en ubicación<small>Carga DID en estado INACTIVE</small></button>
       </nav>
     </aside>
     <main class="content">
-      <h1 id="screenTitle">Space_OdT v2.1 · Cambios de sedes</h1>
-      <p class="lead" id="screenLead">UI enfocada en alta/actualización de sedes mediante CSV/JSON.</p>
+      <h1 id="screenTitle">Space_OdT v2.1 · Crear y activar ubicación Webex Calling</h1>
+      <p class="lead" id="screenLead">Interfaz preparada para el flujo completo de provisión Webex Calling en próximas evolutivas.</p>
+
+      <div class="card">
+        <h3>Definición funcional</h3>
+        <p id="actionDescription" class="muted"></p>
+        <p><b>Nota importante:</b> <span id="importantNote"></span></p>
+        <p><b>Campos obligatorios:</b></p>
+        <ul id="mandatoryFields"></ul>
+      </div>
 
       <div class="card">
         <h3>1) Cargar archivo de cambios</h3>
@@ -258,7 +272,7 @@ def _html_page() -> str:
 
       <div class="card">
         <h3>Campos esperados</h3>
-        <p class="lead">Alta_Sedes+WBXC usa el mismo CSV/JSON que Alta_Sedes (incluyendo <code>location_id</code> cuando exista).</p>
+        <p class="lead">Estos son los campos que se subirán en el archivo CSV/JSON.</p>
         <ul>{required}</ul>
       </div>
     </main>
@@ -266,11 +280,60 @@ def _html_page() -> str:
 
   <script>
     let currentJobId = null;
-    let currentAction = 'alta_sedes';
+    let currentAction = 'crear_activar_ubicacion_wbxc';
+
+    const ACTIONS = {{
+      crear_activar_ubicacion_wbxc: {{
+        title: 'Space_OdT v2.1 · Crear y activar ubicación Webex Calling',
+        lead: 'Alta de sede habilitando Webex Calling en el mismo paso. Flujo operativo en v2.1.',
+        description: 'Crea la ubicación y deja Webex Calling activo para permitir configuración PSTN posterior.',
+        mandatoryFields: ['orgId', 'announcementLanguage', 'name', 'preferredLanguage', 'timeZone', 'address1', 'city', 'state', 'postalCode', 'country'],
+        note: 'orgId debe enviarse en base64. Para locuciones en catalán: announcementLanguage = ca_es.',
+        endpoint: '/api/location-wbxc-jobs',
+        implemented: true
+      }},
+      listar_location_ids: {{
+        title: 'Space_OdT v2.1 · Lista con todos los ID de ubicaciones',
+        lead: 'Vista preparada para consultar locationId y estado de numeración/cabecera.',
+        description: 'Obtiene locations existentes para revisar identificadores y contexto técnico.',
+        mandatoryFields: ['orgId'],
+        note: 'Permite validar si ya existe número de cabecera antes de configurar numeraciones.',
+        endpoint: null,
+        implemented: false
+      }},
+      listar_route_groups: {{
+        title: 'Space_OdT v2.1 · Saber valor de routegroupId',
+        lead: 'Preparado para búsqueda de routing groups por organización.',
+        description: 'Consulta route groups y selecciona los valores oficiales por entorno.',
+        mandatoryFields: ['orgId'],
+        note: 'PRE debe usar RG_CTTI_PRE y PRO debe usar RG_NDV.',
+        endpoint: null,
+        implemented: false
+      }},
+      configurar_pstn: {{
+        title: 'Space_OdT v2.1 · Configurar PSTN de ubicación',
+        lead: 'Pantalla lista para conectar PSTN con route group.',
+        description: 'Configura PSTN en ubicación. Este paso es prerequisito para alta de numeraciones.',
+        mandatoryFields: ['locationId', 'premiseRouteType', 'premiseRouteId'],
+        note: 'premiseRouteType será siempre ROUTE_GROUP.',
+        endpoint: null,
+        implemented: false
+      }},
+      alta_numeraciones: {{
+        title: 'Space_OdT v2.1 · Alta numeraciones en ubicación',
+        lead: 'Soporte visual preparado para carga DID (INACTIVE) tras PSTN activo.',
+        description: 'Carga números en formato +34, normalmente como DID con state INACTIVE.',
+        mandatoryFields: ['locationId', 'phoneNumbers[]', 'numberType'],
+        note: 'Requiere PSTN configurado previamente. Admite fórmula intercom: +3451xxxxxxx.',
+        endpoint: '/api/location-jobs',
+        implemented: true
+      }}
+    }};
 
     window.addEventListener('DOMContentLoaded', () => {{
       const output = document.getElementById('finalConfig');
       output.textContent = 'Aquí se verá únicamente: status + api_response';
+      applyActionMeta();
     }});
 
     function selectAction(action) {{
@@ -283,25 +346,44 @@ def _html_page() -> str:
       document.getElementById('errorSummary').innerHTML = '';
       document.getElementById('finalConfig').textContent = 'Aquí se verá únicamente: status + api_response';
 
-      document.getElementById('menu-alta').classList.toggle('active', action === 'alta_sedes');
-      document.getElementById('menu-wbxc').classList.toggle('active', action === 'alta_sedes_wbxc');
-
-      const title = document.getElementById('screenTitle');
-      const lead = document.getElementById('screenLead');
-      if (action === 'alta_sedes_wbxc') {{
-        title.textContent = 'Space_OdT v2.1 · Alta_Sedes+WBXC';
-        lead.textContent = 'Habilita sedes existentes para Webex Calling usando API oficial (POST /telephony/config/locations).';
-      }} else {{
-        title.textContent = 'Space_OdT v2.1 · Cambios de sedes';
-        lead.textContent = 'UI enfocada en alta/actualización de sedes mediante CSV/JSON.';
-      }}
+      Object.keys(ACTIONS).forEach((key) => {{
+        document.getElementById(`menu-${{key}}`).classList.toggle('active', key === action);
+      }});
+      applyActionMeta();
     }}
 
     function currentCreateEndpoint() {{
-      return currentAction === 'alta_sedes_wbxc' ? '/api/location-wbxc-jobs' : '/api/location-jobs';
+      return ACTIONS[currentAction].endpoint;
+    }}
+
+
+    function renderMandatoryFields(fields) {{
+      const target = document.getElementById('mandatoryFields');
+      if (!Array.isArray(fields) || !fields.length) {{
+        target.innerHTML = '<li>(sin campos obligatorios)</li>';
+        return;
+      }}
+      target.innerHTML = fields.map((field) => `<li><code>${{field}}</code></li>`).join('');
+    }}
+
+    function applyActionMeta() {{
+      const meta = ACTIONS[currentAction];
+      document.getElementById('screenTitle').textContent = meta.title;
+      document.getElementById('screenLead').textContent = meta.lead;
+      document.getElementById('actionDescription').textContent = meta.description;
+      document.getElementById('importantNote').textContent = meta.note;
+      renderMandatoryFields(meta.mandatoryFields || []);
+      const uploadInfo = document.getElementById('uploadInfo');
+      if (!meta.implemented) {{
+        uploadInfo.innerHTML = '<span class="badge">Próximamente</span> Esta acción ya está definida en UI y pendiente de conexión backend.';
+      }}
     }}
 
     async function createJob() {{
+      if (!ACTIONS[currentAction].implemented) {{
+        document.getElementById('uploadInfo').innerHTML = '<span class="badge">Próximamente</span> Esta acción aún no tiene endpoint operativo en backend.';
+        return;
+      }}
       const fileEl = document.getElementById('file');
       if (!fileEl.files.length) {{
         alert('Seleccioná un archivo CSV o JSON');
