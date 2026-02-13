@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import csv
 import io
 import json
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from .engine import MissingV21InputsError, V21Runner
 from .io import LOCATION_HEADERS, LOCATION_REQUIRED_CREATE_FIELDS, load_locations_from_json
@@ -15,6 +15,7 @@ from .io import LOCATION_HEADERS, LOCATION_REQUIRED_CREATE_FIELDS, load_location
 
 def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: int = 8765) -> None:
     runner = V21Runner(token=token, out_dir=out_dir)
+    running_jobs: dict[str, threading.Thread] = {}
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, payload: dict, status: int = 200) -> None:
@@ -41,37 +42,61 @@ def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: i
                 except MissingV21InputsError as exc:
                     self._send({'error': str(exc)}, status=400)
                 return
-            if parsed.path == '/api/final-config':
-                path = runner.v21_dir / 'results_locations.json'
-                if not path.exists():
-                    self._send({'items': []})
-                    return
-                self._send(json.loads(path.read_text(encoding='utf-8')))
+            if parsed.path == '/api/location-state/current':
+                self._send(runner.get_latest_final_state())
                 return
+            if parsed.path == '/api/location-jobs/async-info':
+                self._send(runner.get_async_execution_info())
+                return
+            if parsed.path.startswith('/api/location-jobs/'):
+                path_parts = [part for part in parsed.path.split('/') if part]
+                if len(path_parts) == 3:
+                    _, _, job_id = path_parts
+                    try:
+                        self._send(runner.get_job(job_id).to_dict())
+                    except FileNotFoundError:
+                        self._send({'error': 'job not found'}, status=404)
+                    return
+                if len(path_parts) == 4 and path_parts[-1] == 'result':
+                    job_id = path_parts[2]
+                    try:
+                        self._send(runner.get_job_result(job_id))
+                    except FileNotFoundError as exc:
+                        self._send({'error': str(exc)}, status=404)
+                    return
             self._send({'error': 'not found'}, status=404)
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
-            if parsed.path == '/api/upload-locations':
+            if parsed.path == '/api/location-jobs':
                 try:
                     rows, preview = self._parse_upload()
-                    self._send({'count': len(rows), 'preview': preview})
-                except Exception as exc:  # pragma: no cover
+                    job = runner.create_location_job(rows=rows, entity_type='location')
+                    self._send({'job': job.to_dict(), 'count': len(rows), 'preview': preview})
+                except Exception as exc:  # noqa: BLE001
                     self._send({'error': str(exc)}, status=400)
                 return
 
-            if parsed.path == '/api/run-locations':
+            if parsed.path.startswith('/api/location-jobs/') and parsed.path.endswith('/start'):
+                path_parts = [part for part in parsed.path.split('/') if part]
+                if len(path_parts) != 4:
+                    self._send({'error': 'invalid path'}, status=400)
+                    return
+                job_id = path_parts[2]
                 try:
-                    content_length = int(self.headers.get('Content-Length', '0'))
-                    body = self.rfile.read(content_length) if content_length else b'{}'
-                    payload = json.loads(body.decode('utf-8'))
-                    rows = load_locations_from_json(payload.get('rows', []))
-                    apply = bool(payload.get('apply', True))
-                    max_concurrency = int(payload.get('max_concurrency', 20))
-                    result = asyncio.run(runner.run_locations_async(rows, apply=apply, max_concurrency=max_concurrency))
-                    self._send(result)
-                except Exception as exc:  # pragma: no cover
-                    self._send({'error': str(exc)}, status=400)
+                    job = runner.get_job(job_id)
+                except FileNotFoundError:
+                    self._send({'error': 'job not found'}, status=404)
+                    return
+
+                if job.status == 'running':
+                    self._send({'job': job.to_dict(), 'message': 'job already running'})
+                    return
+
+                thread = threading.Thread(target=_run_job_background, args=(runner, job_id), daemon=True)
+                thread.start()
+                running_jobs[job_id] = thread
+                self._send({'job': job.to_dict(), 'message': 'job started'})
                 return
 
             self._send({'error': 'not found'}, status=404)
@@ -102,6 +127,17 @@ def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: i
     server = ThreadingHTTPServer((host, port), Handler)
     print(f'V2.1 UI listening on http://{host}:{port}')
     server.serve_forever()
+
+
+def _run_job_background(runner: V21Runner, job_id: str) -> None:
+    import asyncio
+
+    try:
+        asyncio.run(runner.process_location_job(job_id, chunk_size=200, max_concurrency=20))
+    except Exception:  # noqa: BLE001
+        job = runner.get_job(job_id)
+        job.status = 'failed'
+        runner.save_job(job)
 
 
 def _rows_from_multipart(raw: bytes, boundary: bytes) -> list[dict]:
@@ -139,48 +175,81 @@ def _html_page() -> str:
         for field in LOCATION_HEADERS
     )
     return f"""<!doctype html>
-<html lang="es">
+<html lang=\"es\">
 <head>
-  <meta charset="utf-8" />
-  <title>Space_OdT v2.1 alta_locations</title>
+  <meta charset=\"utf-8\" />
+  <title>Space_OdT v2.1 location jobs</title>
   <style>
     body {{ font-family: Arial, sans-serif; margin: 20px; max-width: 1100px; }}
     .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 14px; }}
+    .progress {{ width: 100%; height: 18px; background: #eee; border-radius: 12px; overflow: hidden; }}
+    .progress > div {{ height: 100%; background: #3d7eff; width: 0%; }}
     button {{ margin-right: 8px; }}
     table {{ border-collapse: collapse; width: 100%; }}
     th, td {{ border: 1px solid #ddd; padding: 6px; font-size: 12px; }}
-    pre {{ background: #f6f6f6; padding: 8px; border-radius: 6px; overflow-x: auto; }}
+    pre {{ background: #f6f6f6; padding: 8px; border-radius: 6px; overflow-x: auto; max-height: 250px; }}
   </style>
 </head>
 <body>
-  <h1>Space_OdT v2.1 - alta_locations</h1>
+  <h1>Space_OdT v2.1 - Location Bulk Jobs</h1>
 
-  <div class="card">
-    <h3>Ver qué hay</h3>
-    <input id="file" type="file" accept=".csv,.json" />
-    <button onclick="uploadFile()">Cargar CSV/JSON</button>
-    <div id="uploadInfo"></div>
-    <div id="preview"></div>
+  <div class=\"card\">
+    <h3>Estado actual (antes de cargar)</h3>
+    <button onclick=\"loadCurrentState()\">Ver estado actual</button>
+    <div id=\"currentStateInfo\"></div>
+    <div id=\"currentStateTable\"></div>
   </div>
 
-  <div class="card">
+  <div class=\"card\">
+    <h3>Upload</h3>
+    <input id=\"file\" type=\"file\" accept=\".csv,.json\" />
+    <button onclick=\"createJob()\">Crear job</button>
+    <div id=\"uploadInfo\"></div>
+    <div id=\"preview\"></div>
+  </div>
+
+  <div class=\"card\">
     <h3>Campos obligatorios</h3>
     <ul>{required}</ul>
   </div>
 
-  <div class="card">
-    <h3>Ejecutar acción</h3>
-    <button onclick="runAction()">Ejecutar acción</button>
-    <div id="summary"></div>
-    <div id="resultTable"></div>
-    <button onclick="showFinalConfig()">Ver configuración final</button>
-    <pre id="finalConfig"></pre>
+  <div class=\"card\">
+    <h3>Ejecución</h3>
+    <button onclick=\"startJob()\">Start</button>
+    <button onclick=\"refreshJob()\">Actualizar estado</button>
+    <div id=\"jobStatus\"></div>
+    <div class=\"progress\"><div id=\"bar\"></div></div>
+    <div id=\"errorSummary\"></div>
+    <button onclick=\"showFinalConfig()\">Ver configuración final</button>
+    <pre id=\"finalConfig\"></pre>
+    <h4>Confirmación ejecución asíncrona</h4>
+    <pre id=\"asyncInfo\"></pre>
   </div>
 
   <script>
-    let loadedRows = [];
+    let currentJobId = null;
 
-    async function uploadFile() {{
+    window.addEventListener('DOMContentLoaded', () => {{
+      loadCurrentState();
+      loadAsyncInfo();
+    }});
+
+    async function loadCurrentState() {{
+      const r = await fetch('/api/location-state/current');
+      const data = await r.json();
+      const source = data.source || 'none';
+      const items = data.items || [];
+      document.getElementById('currentStateInfo').innerHTML = `Fuente: <code>${{source}}</code> | Items: <b>${{items.length}}</b>`;
+      renderTable('currentStateTable', items);
+    }}
+
+    async function loadAsyncInfo() {{
+      const r = await fetch('/api/location-jobs/async-info');
+      const data = await r.json();
+      document.getElementById('asyncInfo').textContent = JSON.stringify(data, null, 2);
+    }}
+
+    async function createJob() {{
       const fileEl = document.getElementById('file');
       if (!fileEl.files.length) {{
         alert('Seleccioná un archivo CSV o JSON');
@@ -188,60 +257,66 @@ def _html_page() -> str:
       }}
       const fd = new FormData();
       fd.append('file', fileEl.files[0]);
-      const r = await fetch('/api/upload-locations', {{ method: 'POST', body: fd }});
+      const r = await fetch('/api/location-jobs', {{ method: 'POST', body: fd }});
       const data = await r.json();
       if (data.error) {{
         document.getElementById('uploadInfo').innerHTML = '<span style="color:red">' + data.error + '</span>';
         return;
       }}
-      loadedRows = data.preview ? [...data.preview] : [];
-      document.getElementById('uploadInfo').innerHTML = `<b>${{data.count}}</b> filas parseadas`;
+      currentJobId = data.job.job_id;
+      document.getElementById('uploadInfo').innerHTML = `Job <code>${{currentJobId}}</code> creado con ${{data.count}} filas`;
       renderTable('preview', data.preview || []);
+      renderJob(data.job);
     }}
 
-    async function runAction() {{
-      const rows = await collectRowsFromPreviewOrFile();
-      const r = await fetch('/api/run-locations', {{
-        method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{ rows, apply: true, max_concurrency: 20 }}),
-      }});
+    async function startJob() {{
+      if (!currentJobId) {{ alert('Primero creá un job'); return; }}
+      const r = await fetch(`/api/location-jobs/${{currentJobId}}/start`, {{ method: 'POST' }});
       const data = await r.json();
-      if (data.error) {{
-        document.getElementById('summary').innerHTML = '<span style="color:red">' + data.error + '</span>';
-        return;
-      }}
-      document.getElementById('summary').innerHTML = `Total: ${{data.summary.total}} | Success: ${{data.summary.success}} | Pending: ${{data.summary.pending}} | Rejected: ${{data.summary.rejected}}`;
-      renderTable('resultTable', data.items || []);
+      if (data.error) {{ alert(data.error); return; }}
+      renderJob(data.job);
+      pollUntilDone();
     }}
 
-    async function collectRowsFromPreviewOrFile() {{
-      const fileEl = document.getElementById('file');
-      if (!fileEl.files.length) return loadedRows;
-      const file = fileEl.files[0];
-      if (file.name.endsWith('.json')) {{
-        return JSON.parse(await file.text());
-      }}
-      const text = await file.text();
-      return csvToObjects(text);
+    async function refreshJob() {{
+      if (!currentJobId) return;
+      const r = await fetch(`/api/location-jobs/${{currentJobId}}`);
+      const data = await r.json();
+      if (!data.error) renderJob(data);
     }}
 
-    function csvToObjects(text) {{
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      if (!lines.length) return [];
-      const headers = lines[0].split(',').map(h => h.trim());
-      return lines.slice(1).map(line => {{
-        const cols = line.split(',');
-        const obj = {{}};
-        headers.forEach((h, idx) => obj[h] = (cols[idx] || '').trim());
-        return obj;
-      }});
+    async function pollUntilDone() {{
+      for (let i = 0; i < 120; i++) {{
+        await refreshJob();
+        const status = document.getElementById('jobStatus').dataset.status;
+        if (status === 'completed' || status === 'failed') return;
+        await new Promise(res => setTimeout(res, 1200));
+      }}
     }}
 
     async function showFinalConfig() {{
-      const r = await fetch('/api/final-config');
+      if (!currentJobId) return;
+      const r = await fetch(`/api/location-jobs/${{currentJobId}}/result`);
       const data = await r.json();
+      if (data.error) {{
+        document.getElementById('finalConfig').textContent = data.error;
+        return;
+      }}
       document.getElementById('finalConfig').textContent = JSON.stringify(data, null, 2);
+      const errors = data.totals?.rejected || 0;
+      document.getElementById('errorSummary').innerHTML = `Errores rechazados: <b>${{errors}}</b>`;
+    }}
+
+    function renderJob(job) {{
+      const totals = job.totals || {{}};
+      const processed = totals.processed || 0;
+      const total = totals.total || 0;
+      const pct = total ? Math.floor((processed / total) * 100) : 0;
+      const label = `Estado: <b>${{job.status}}</b> | Procesadas: ${{processed}}/${{total}} | OK: ${{totals.success||0}} | Rechazadas: ${{totals.rejected||0}}`;
+      const el = document.getElementById('jobStatus');
+      el.innerHTML = label;
+      el.dataset.status = job.status;
+      document.getElementById('bar').style.width = pct + '%';
     }}
 
     function renderTable(targetId, items) {{
