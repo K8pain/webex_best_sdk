@@ -79,3 +79,15 @@ def test_async_info_and_latest_state_contract(tmp_path: Path):
     (tmp_path / 'v21' / 'jobs' / job.job_id / 'final_state.json').write_text(json.dumps(state), encoding='utf-8')
     latest = runner.get_latest_final_state()
     assert latest['items'] == [{'id': 'abc', 'name': 'Sevilla'}]
+
+
+def test_v21_verbose_log_writer_creates_jsonl(tmp_path: Path):
+    runner = V21Runner(token='token', out_dir=tmp_path)
+
+    runner._log_verbose(event='request', method='api.people.me')
+
+    log_path = tmp_path / 'v21' / 'api_verbose.log'
+    assert log_path.exists()
+    content = log_path.read_text(encoding='utf-8')
+    assert '"event": "request"' in content
+    assert '"method": "api.people.me"' in content

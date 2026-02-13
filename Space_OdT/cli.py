@@ -12,11 +12,11 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from Space_OdT.config import Settings
     from Space_OdT.export_runner import run_exports
-    from Space_OdT.sdk_client import MissingTokenError, create_api
+    from Space_OdT.sdk_client import MissingTokenError, create_api, resolve_access_token
 else:
     from .config import Settings
     from .export_runner import run_exports
-    from .sdk_client import MissingTokenError, create_api
+    from .sdk_client import MissingTokenError, create_api, resolve_access_token
 
 
 LAB_FALLBACK_WEBEX_ACCESS_TOKEN = 'ZmI0ZmE0MDYtMGViYS00MDc0LWFhZGEtNThlNGYzOTVmMDE4ODMzZTJjOTUtZGZi_P0A1_e5f7d973-b269-4686-997e-45119168ced2'
@@ -89,9 +89,10 @@ def main() -> None:
     if args.command == 'v2_bulk_run':
         from Space_OdT.v2.engine import MissingV2InputsError, V2Runner
 
-        token = args.token or os.getenv('WEBEX_ACCESS_TOKEN')
-        if not token:
-            raise SystemExit('WEBEX_ACCESS_TOKEN is required (or pass --token)')
+        try:
+            token = resolve_access_token(args.token)
+        except MissingTokenError as exc:
+            raise SystemExit(str(exc))
         decision_provider = None
         if args.decisions_file:
             decision_provider = _decision_provider_from_file(Path(args.decisions_file))
@@ -114,18 +115,20 @@ def main() -> None:
     if args.command == 'v21_softphone_ui':
         from Space_OdT.v21 import launch_v21_ui
 
-        token = args.token or os.getenv('WEBEX_ACCESS_TOKEN')
-        if not token:
-            raise SystemExit('WEBEX_ACCESS_TOKEN is required (or pass --token)')
+        try:
+            token = resolve_access_token(args.token)
+        except MissingTokenError as exc:
+            raise SystemExit(str(exc))
         launch_v21_ui(token=token, out_dir=Path(args.out_dir), host=args.v21_ui_host, port=args.v21_ui_port)
         raise SystemExit(0)
 
     if args.command == 'v21_softphone_bulk_run':
         from Space_OdT.v21.engine import MissingV21InputsError, V21Runner
 
-        token = args.token or os.getenv('WEBEX_ACCESS_TOKEN')
-        if not token:
-            raise SystemExit('WEBEX_ACCESS_TOKEN is required (or pass --token)')
+        try:
+            token = resolve_access_token(args.token)
+        except MissingTokenError as exc:
+            raise SystemExit(str(exc))
         runner = V21Runner(
             token=token,
             out_dir=Path(args.out_dir),

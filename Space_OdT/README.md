@@ -86,7 +86,7 @@ Cubrir tareas de cierre manual/post-carga masiva para softphones, incluyendo pla
 ### Comando
 
 ```bash
-python -m Space_OdT.cli v21_softphone_bulk_run --out-dir .artifacts --token "<WEBEX_ACCESS_TOKEN>"
+python -m Space_OdT.cli v21_softphone_bulk_run --out-dir .artifacts
 ```
 
 Por defecto ejecuta **dry-run** y genera plan de acciones en:
@@ -97,10 +97,13 @@ Por defecto ejecuta **dry-run** y genera plan de acciones en:
 Para modo apply (base inicial/no-op controlado):
 
 ```bash
-python -m Space_OdT.cli v21_softphone_bulk_run --out-dir .artifacts --token "<WEBEX_ACCESS_TOKEN>" --v21-apply
+python -m Space_OdT.cli v21_softphone_bulk_run --out-dir .artifacts --v21-apply
 ```
 
 ### Inputs V2.1
+
+Si no se pasa `--token`, se intenta resolver automáticamente desde `.env` (con `override=True`) buscando en el directorio actual, ancestros y raíz del proyecto.
+
 
 - `.artifacts/v21/input_locations.csv`
 - `.artifacts/v21/input_users.csv`
@@ -160,7 +163,7 @@ Regla de diseño: **modificas CSV/política, no código**, salvo que quieras int
 Ahora existe una UI local HTML5 para ejecutar una acción cada vez:
 
 ```bash
-python -m Space_OdT.cli v21_softphone_ui --out-dir .artifacts --token "<WEBEX_ACCESS_TOKEN>"
+python -m Space_OdT.cli v21_softphone_ui --out-dir .artifacts
 ```
 
 - Abre: `http://127.0.0.1:8765`
@@ -174,9 +177,3 @@ python -m Space_OdT.cli v21_softphone_ui --out-dir .artifacts --token "<WEBEX_AC
   - `changed`
 
 Esto deja claro qué está a punto de cambiar y qué cambió después.
-
-### Estado real de implementación v2.1
-
-No, la v2.1 todavía **no** es el 100% de toda la implementación final de endpoints productivos.
-Esta entrega cubre la base independiente, la estructura de configuración, planificador de acciones y UI por botón para operación de cierre manual.
-La conexión endpoint-a-endpoint a Webex para cada acción debe completarse iterativamente por etapa en siguientes incrementos.

@@ -14,15 +14,21 @@ class MissingTokenError(RuntimeError):
     pass
 
 
-def create_api(token: str | None = None) -> 'WebexSimpleApi':
-    from wxc_sdk import WebexSimpleApi
-
-    selected_token = token
+def resolve_access_token(explicit_token: str | None = None) -> str:
+    """Resolve access token from explicit CLI arg or .env/environment fallback."""
+    selected_token = explicit_token
     if selected_token is None:
         _load_token_from_dotenv()
         selected_token = os.getenv('WEBEX_ACCESS_TOKEN')
     if not selected_token:
         raise MissingTokenError('WEBEX_ACCESS_TOKEN is required (or pass --token)')
+    return selected_token
+
+
+def create_api(token: str | None = None) -> 'WebexSimpleApi':
+    from wxc_sdk import WebexSimpleApi
+
+    selected_token = resolve_access_token(token)
     return WebexSimpleApi(tokens=selected_token)
 
 

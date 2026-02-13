@@ -214,8 +214,8 @@ def _html_page() -> str:
   </div>
 
   <div class=\"card\">
-    <h3>Ejecución</h3>
-    <button onclick=\"startJob()\">Start</button>
+    <h3>Ejecución (acción unitaria)</h3>
+    <button onclick=\"startJob()\">Apply</button>
     <button onclick=\"refreshJob()\">Actualizar estado</button>
     <div id=\"jobStatus\"></div>
     <div class=\"progress\"><div id=\"bar\"></div></div>

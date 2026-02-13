@@ -66,6 +66,35 @@ class V21Runner:
     def jobs_dir(self) -> Path:
         return self.v21_dir / 'jobs'
 
+    @property
+    def verbose_log_path(self) -> Path:
+        return self.v21_dir / 'api_verbose.log'
+
+    def _log_verbose(self, *, event: str, method: str, payload: dict[str, Any] | None = None) -> None:
+        entry = {
+            'ts': dt.datetime.now(dt.timezone.utc).isoformat(),
+            'event': event,
+            'method': method,
+            'payload': payload or {},
+        }
+        self.verbose_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.verbose_log_path.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + '\n')
+
+    async def _call_logged(self, method_name: str, awaitable):
+        self._log_verbose(event='request', method=method_name)
+        try:
+            result = await awaitable
+            self._log_verbose(event='response', method=method_name, payload={'ok': True})
+            return result
+        except Exception as exc:  # noqa: BLE001
+            self._log_verbose(
+                event='response',
+                method=method_name,
+                payload={'ok': False, 'error_type': type(exc).__name__, 'error': str(exc)},
+            )
+            raise
+
     def _ensure_inputs(self) -> None:
         created = bootstrap_v21_inputs(self.v21_dir)
         if created:
@@ -222,7 +251,7 @@ class V21Runner:
         start_offset = int(job.cursor.get('offset', 0))
         async with AsWebexSimpleApi(tokens=self.token, concurrent_requests=max_concurrency) as api:
             locations_api = AsLocationsApi(session=api.session)
-            await api.people.me()
+            await self._call_logged('api.people.me', api.people.me())
 
             offset = start_offset
             while offset < len(rows):
@@ -276,10 +305,16 @@ class V21Runner:
 
     async def _safe_fetch_details(self, locations_api: AsLocationsApi, remote_id: str, row: LocationInput) -> Any | None:
         try:
-            return await locations_api.details(remote_id, org_id=row.org_id)
+            return await self._call_logged(
+                'locations_api.details',
+                locations_api.details(remote_id, org_id=row.org_id),
+            )
         except Exception:
             try:
-                return await locations_api.by_name(row.location_name, org_id=row.org_id)
+                return await self._call_logged(
+                    'locations_api.by_name',
+                    locations_api.by_name(row.location_name, org_id=row.org_id),
+                )
             except Exception:
                 return None
 
@@ -356,7 +391,10 @@ class V21Runner:
     async def _upsert_location(self, locations_api: AsLocationsApi, row: LocationInput, *, apply: bool) -> dict[str, Any]:
         location_key = self._stable_location_key(row)
         try:
-            existing = await locations_api.by_name(row.location_name, org_id=row.org_id)
+            existing = await self._call_logged(
+                'locations_api.by_name',
+                locations_api.by_name(row.location_name, org_id=row.org_id),
+            )
             if not apply:
                 return {
                     'row_number': row.row_number,
@@ -371,21 +409,27 @@ class V21Runner:
             remote_id: str | None = None
             if existing is None:
                 self._validate_required_fields(row)
-                remote_id = await locations_api.create(
-                    name=row.location_name,
-                    time_zone=row.payload.get('time_zone') or '',
-                    preferred_language=row.payload.get('preferred_language') or '',
-                    announcement_language=row.payload.get('announcement_language') or '',
-                    address1=row.payload.get('address1') or '',
-                    address2=row.payload.get('address2') or None,
-                    city=row.payload.get('city') or '',
-                    state=row.payload.get('state') or '',
-                    postal_code=row.payload.get('postal_code') or '',
-                    country=row.payload.get('country') or '',
-                    org_id=row.org_id,
+                remote_id = await self._call_logged(
+                    'locations_api.create',
+                    locations_api.create(
+                        name=row.location_name,
+                        time_zone=row.payload.get('time_zone') or '',
+                        preferred_language=row.payload.get('preferred_language') or '',
+                        announcement_language=row.payload.get('announcement_language') or '',
+                        address1=row.payload.get('address1') or '',
+                        address2=row.payload.get('address2') or None,
+                        city=row.payload.get('city') or '',
+                        state=row.payload.get('state') or '',
+                        postal_code=row.payload.get('postal_code') or '',
+                        country=row.payload.get('country') or '',
+                        org_id=row.org_id,
+                    ),
                 )
             else:
-                settings = await locations_api.details(existing.location_id, org_id=row.org_id)
+                settings = await self._call_logged(
+                    'locations_api.details',
+                    locations_api.details(existing.location_id, org_id=row.org_id),
+                )
                 if row.payload.get('time_zone'):
                     settings.time_zone = row.payload.get('time_zone')
                 if row.payload.get('preferred_language'):
@@ -405,7 +449,10 @@ class V21Runner:
                         settings.address.postal_code = row.payload.get('postal_code')
                     if row.payload.get('country'):
                         settings.address.country = row.payload.get('country')
-                await locations_api.update(existing.location_id, settings=settings, org_id=row.org_id)
+                await self._call_logged(
+                    'locations_api.update',
+                    locations_api.update(existing.location_id, settings=settings, org_id=row.org_id),
+                )
                 remote_id = existing.location_id
 
             return {
