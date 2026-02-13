@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 import webbrowser
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -19,7 +20,20 @@ else:
     from .sdk_client import MissingTokenError, create_api, resolve_access_token
 
 
-LAB_FALLBACK_WEBEX_ACCESS_TOKEN = 'ZmI0ZmE0MDYtMGViYS00MDc0LWFhZGEtNThlNGYzOTVmMDE4ODMzZTJjOTUtZGZi_P0A1_e5f7d973-b269-4686-997e-45119168ced2'
+def load_runtime_env() -> None:
+    """Load .env from CWD, parents and project root before token resolution."""
+    cwd = Path.cwd()
+    package_root = Path(__file__).resolve().parents[1]
+    env_candidates = [cwd / '.env', *[parent / '.env' for parent in cwd.parents], package_root / '.env']
+
+    seen: set[str] = set()
+    for env_path in env_candidates:
+        resolved = str(env_path.resolve())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if env_path.is_file():
+            load_dotenv(dotenv_path=env_path, override=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,7 +56,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def inventory_run(args) -> int:
-    os.environ.setdefault('WEBEX_ACCESS_TOKEN', LAB_FALLBACK_WEBEX_ACCESS_TOKEN)
 
     settings = Settings(
         out_dir=Path(args.out_dir),
@@ -82,6 +95,7 @@ def _decision_provider_from_file(path: Path):
 
 
 def main() -> None:
+    load_runtime_env()
     parser = build_parser()
     args = parser.parse_args()
     if args.command == 'inventory_run':

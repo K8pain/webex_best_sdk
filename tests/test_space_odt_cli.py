@@ -36,8 +36,12 @@ def _import_cli_with_stubs():
 
         return DummyApi()
 
+    def resolve_access_token(token=None):
+        return token or 'stub-token'
+
     fake_sdk_client.MissingTokenError = MissingTokenError
     fake_sdk_client.create_api = create_api
+    fake_sdk_client.resolve_access_token = resolve_access_token
 
     sys.modules['Space_OdT.config'] = fake_config
     sys.modules['Space_OdT.export_runner'] = fake_export_runner

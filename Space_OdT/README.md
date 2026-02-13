@@ -102,8 +102,12 @@ python -m Space_OdT.cli v21_softphone_bulk_run --out-dir .artifacts --v21-apply
 
 ### Inputs V2.1
 
-Si no se pasa `--token`, se intenta resolver automáticamente desde `.env` (con `override=True`) buscando en el directorio actual, ancestros y raíz del proyecto.
+Si no se pasa `--token`, el CLI carga `.env` (CWD, ancestros y raíz del proyecto, con `override=True`) antes de resolver `WEBEX_ACCESS_TOKEN`.
 
+La responsabilidad queda separada así:
+
+- **CLI (`Space_OdT/cli.py`)**: carga de `.env` y preparación del entorno de ejecución.
+- **SDK client (`Space_OdT/sdk_client.py`)**: solo resuelve token ya disponible (`--token` o `WEBEX_ACCESS_TOKEN`) y crea API.
 
 - `.artifacts/v21/input_locations.csv`
 - `.artifacts/v21/input_users.csv`
