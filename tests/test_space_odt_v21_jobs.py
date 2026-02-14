@@ -105,6 +105,10 @@ def test_html_contains_sidebar_and_wbxc_menu():
     html = _html_page()
     assert 'Crear y activar ubicación Webex Calling' in html
     assert '/api/location-wbxc-jobs' in html
+    assert 'Configurar PSTN de ubicación' in html
+    assert '/api/transform/configurar-pstn' in html
+    assert 'Añadir cabecera de ubicación' in html
+    assert '/api/transform/actualizar-cabecera' in html
 
 
 def test_list_location_ids_returns_ids_and_metadata(monkeypatch, tmp_path: Path):

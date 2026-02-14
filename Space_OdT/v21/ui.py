@@ -113,7 +113,64 @@ def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: i
                 self._send({'job': job.to_dict(), 'message': 'job started'})
                 return
 
+            if parsed.path in {
+                '/api/transform/configurar-pstn',
+                '/api/transform/alta-numeraciones',
+                '/api/transform/actualizar-cabecera',
+            }:
+                try:
+                    from wxc_sdk.telephony.location.numbers import TelephoneNumberType
+
+                    from .transformacion.ubicacion_actualizar_cabecera import actualizar_cabecera_ubicacion
+                    from .transformacion.ubicacion_alta_numeraciones_desactivadas import alta_numeraciones_desactivadas
+                    from .transformacion.ubicacion_configurar_pstn import configurar_pstn_ubicacion
+
+                    payload = self._parse_json_payload()
+                    if parsed.path == '/api/transform/configurar-pstn':
+                        result = configurar_pstn_ubicacion(
+                            token=token,
+                            location_id=payload['locationId'],
+                            premise_route_type=payload.get('premiseRouteType', 'ROUTE_GROUP'),
+                            premise_route_id=payload['premiseRouteId'],
+                            org_id=payload.get('orgId'),
+                        )
+                    elif parsed.path == '/api/transform/alta-numeraciones':
+                        result = alta_numeraciones_desactivadas(
+                            token=token,
+                            location_id=payload['locationId'],
+                            phone_numbers=payload['phoneNumbers'],
+                            number_type=TelephoneNumberType(payload.get('numberType', 'DID')),
+                            org_id=payload.get('orgId'),
+                        )
+                    else:
+                        result = actualizar_cabecera_ubicacion(
+                            token=token,
+                            location_id=payload['locationId'],
+                            phone_number=payload['phoneNumber'],
+                            calling_line_name=payload.get('callingLineName'),
+                            org_id=payload.get('orgId'),
+                        )
+                    self._send({'status': 'success', 'result': result})
+                except KeyError as exc:
+                    self._send({'error': f'Campo obligatorio ausente: {exc.args[0]}'}, status=400)
+                except Exception as exc:  # noqa: BLE001
+                    self._send({'error': str(exc)}, status=400)
+                return
+
             self._send({'error': 'not found'}, status=404)
+
+        def _parse_json_payload(self) -> dict:
+            content_length = int(self.headers.get('Content-Length', '0'))
+            raw = self.rfile.read(content_length)
+            if not raw:
+                raise ValueError('Body vacío')
+            ctype = self.headers.get('Content-Type', '')
+            if 'application/json' not in ctype:
+                raise ValueError('Content-Type debe ser application/json')
+            payload = json.loads(raw.decode('utf-8'))
+            if not isinstance(payload, dict):
+                raise ValueError('JSON debe ser un objeto')
+            return payload
 
         def _parse_upload(self) -> tuple[list[dict], list[dict]]:
             content_length = int(self.headers.get('Content-Length', '0'))
@@ -258,6 +315,7 @@ def _html_page() -> str:
         <button id="menu-listar_route_groups" onclick="selectAction('listar_route_groups')">Saber valor de routegroupId<small>Identificación RG_CTTI_PRE / RG_NDV</small></button>
         <button id="menu-configurar_pstn" onclick="selectAction('configurar_pstn')">Configurar PSTN de ubicación<small>premiseRouteType = ROUTE_GROUP</small></button>
         <button id="menu-alta_numeraciones" onclick="selectAction('alta_numeraciones')">Alta numeraciones en ubicación<small>Carga DID en estado INACTIVE</small></button>
+        <button id="menu-actualizar_cabecera" onclick="selectAction('actualizar_cabecera')">Añadir cabecera de ubicación<small>callingLineId por sede</small></button>
       </nav>
     </aside>
     <main class="content">
@@ -302,6 +360,15 @@ def _html_page() -> str:
         <div id="errorSummary"></div>
         <pre id="finalConfig"></pre>
       </div>
+
+      <div class="card hidden" id="transformCard">
+        <h3>1) Ejecutar script técnico</h3>
+        <div id="transformFields"></div>
+        <div class="actions">
+          <button onclick="runTransformAction()">Ejecutar script</button>
+        </div>
+        <pre id="transformOutput">Aquí se verá la respuesta real de API y logs funcionales del script.</pre>
+      </div>
     </main>
   </div>
 
@@ -339,21 +406,48 @@ def _html_page() -> str:
       }},
       configurar_pstn: {{
         title: 'Space_OdT v2.1 · Configurar PSTN de ubicación',
-        lead: 'Pantalla lista para conectar PSTN con route group.',
-        description: 'Configura PSTN en ubicación. Este paso es prerequisito para alta de numeraciones.',
+        lead: 'Ejecución directa del script real de configuración PSTN.',
+        description: 'Dispara el script SDK de transformarción para asociar route group/trunk y devuelve respuesta de API en pantalla.',
         mandatoryFields: ['locationId', 'premiseRouteType', 'premiseRouteId'],
         note: 'premiseRouteType será siempre ROUTE_GROUP.',
-        endpoint: null,
-        mode: 'todo'
+        endpoint: '/api/transform/configurar-pstn',
+        mode: 'transform',
+        formFields: [
+          {{ id: 'cfg_orgId', label: 'orgId (opcional)', placeholder: 'base64 orgId', required: false }},
+          {{ id: 'cfg_locationId', label: 'locationId', placeholder: 'Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OLy4uLg==', required: true }},
+          {{ id: 'cfg_premiseRouteType', label: 'premiseRouteType', placeholder: 'ROUTE_GROUP', required: true, defaultValue: 'ROUTE_GROUP' }},
+          {{ id: 'cfg_premiseRouteId', label: 'premiseRouteId', placeholder: 'route-group-id', required: true }}
+        ]
       }},
       alta_numeraciones: {{
         title: 'Space_OdT v2.1 · Alta numeraciones en ubicación',
-        lead: 'Soporte visual preparado para carga DID (INACTIVE) tras PSTN activo.',
-        description: 'Carga números en formato +34, normalmente como DID con state INACTIVE.',
+        lead: 'Ejecución directa del script real de alta de numeraciones.',
+        description: 'Dispara el script SDK para dar de alta números (INACTIVE) y mostrar respuesta real de API.',
         mandatoryFields: ['locationId', 'phoneNumbers[]', 'numberType'],
         note: 'Requiere PSTN configurado previamente. Admite fórmula intercom: +3451xxxxxxx.',
-        endpoint: '/api/location-jobs',
-        mode: 'job_upload'
+        endpoint: '/api/transform/alta-numeraciones',
+        mode: 'transform',
+        formFields: [
+          {{ id: 'num_orgId', label: 'orgId (opcional)', placeholder: 'base64 orgId', required: false }},
+          {{ id: 'num_locationId', label: 'locationId', placeholder: 'locationId', required: true }},
+          {{ id: 'num_phoneNumbers', label: 'phoneNumbers (uno por línea)', placeholder: '+34910000001\n+34910000002', required: true, multiline: true }},
+          {{ id: 'num_numberType', label: 'numberType', placeholder: 'DID', required: true, defaultValue: 'DID' }}
+        ]
+      }},
+      actualizar_cabecera: {{
+        title: 'Space_OdT v2.1 · Añadir cabecera de ubicación',
+        lead: 'Ejecución directa del script real de actualización de cabecera.',
+        description: 'Lanza el script SDK para actualizar calling line ID de ubicación y devuelve respuesta real de API.',
+        mandatoryFields: ['locationId', 'phoneNumber'],
+        note: 'Este paso usa un número previamente asociado a la ubicación.',
+        endpoint: '/api/transform/actualizar-cabecera',
+        mode: 'transform',
+        formFields: [
+          {{ id: 'hdr_orgId', label: 'orgId (opcional)', placeholder: 'base64 orgId', required: false }},
+          {{ id: 'hdr_locationId', label: 'locationId', placeholder: 'locationId', required: true }},
+          {{ id: 'hdr_phoneNumber', label: 'phoneNumber', placeholder: '+34910000001', required: true }},
+          {{ id: 'hdr_callingLineName', label: 'callingLineName (opcional)', placeholder: 'Sede Madrid', required: false }}
+        ]
       }}
     }};
 
@@ -407,9 +501,89 @@ def _html_page() -> str:
       document.getElementById('uploadCard').classList.toggle('hidden', meta.mode !== 'job_upload');
       document.getElementById('jobCard').classList.toggle('hidden', meta.mode !== 'job_upload');
       document.getElementById('orgQueryCard').classList.toggle('hidden', meta.mode !== 'org_query');
+      document.getElementById('transformCard').classList.toggle('hidden', meta.mode !== 'transform');
       const uploadInfo = document.getElementById('uploadInfo');
       if (meta.mode === 'todo') {{
         uploadInfo.innerHTML = '<span class="badge">Próximamente</span> Esta acción ya está definida en UI y pendiente de conexión backend.';
+      }}
+      renderTransformFields(meta.formFields || []);
+    }}
+
+    function renderTransformFields(fields) {{
+      const target = document.getElementById('transformFields');
+      if (!fields.length) {{
+        target.innerHTML = '<p class="muted">Sin campos definidos.</p>';
+        return;
+      }}
+      target.innerHTML = fields.map((f) => {{
+        const required = f.required ? ' *' : '';
+        if (f.multiline) {{
+          return `<label class="muted">${{f.label}}${{required}}</label><textarea id="${{f.id}}" placeholder="${{f.placeholder || ''}}" style="width:100%; min-height:90px; margin:6px 0 12px; padding:8px; border-radius:8px; border:1px solid #1d8e45; background:#0a4a24; color:#fff;">${{f.defaultValue || ''}}</textarea>`;
+        }}
+        return `<label class="muted">${{f.label}}${{required}}</label><input id="${{f.id}}" type="text" value="${{f.defaultValue || ''}}" placeholder="${{f.placeholder || ''}}" style="width:100%; margin:6px 0 12px; padding:8px; border-radius:8px; border:1px solid #1d8e45; background:#0a4a24; color:#fff;" />`;
+      }}).join('');
+    }}
+
+    function collectTransformPayload(action, fields) {{
+      if (action === 'configurar_pstn') {{
+        return {{
+          orgId: readOptional('cfg_orgId'),
+          locationId: readRequired('cfg_locationId', 'locationId'),
+          premiseRouteType: (readOptional('cfg_premiseRouteType') || 'ROUTE_GROUP').trim(),
+          premiseRouteId: readRequired('cfg_premiseRouteId', 'premiseRouteId')
+        }};
+      }}
+      if (action === 'alta_numeraciones') {{
+        const numbersRaw = readRequired('num_phoneNumbers', 'phoneNumbers');
+        const phoneNumbers = numbersRaw.split('\n').map((v) => v.trim()).filter(Boolean);
+        if (!phoneNumbers.length) throw new Error('Debe informar al menos un phoneNumber');
+        return {{
+          orgId: readOptional('num_orgId'),
+          locationId: readRequired('num_locationId', 'locationId'),
+          phoneNumbers,
+          numberType: (readOptional('num_numberType') || 'DID').trim().toUpperCase()
+        }};
+      }}
+      if (action === 'actualizar_cabecera') {{
+        return {{
+          orgId: readOptional('hdr_orgId'),
+          locationId: readRequired('hdr_locationId', 'locationId'),
+          phoneNumber: readRequired('hdr_phoneNumber', 'phoneNumber'),
+          callingLineName: readOptional('hdr_callingLineName')
+        }};
+      }}
+      throw new Error('Acción no soportada');
+    }}
+
+    function readRequired(id, label) {{
+      const value = (document.getElementById(id)?.value || '').trim();
+      if (!value) throw new Error(`Campo obligatorio: ${{label}}`);
+      return value;
+    }}
+
+    function readOptional(id) {{
+      const value = (document.getElementById(id)?.value || '').trim();
+      return value || null;
+    }}
+
+    async function runTransformAction() {{
+      const meta = ACTIONS[currentAction];
+      try {{
+        const payload = collectTransformPayload(currentAction, meta.formFields || []);
+        const r = await fetch(meta.endpoint, {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify(payload)
+        }});
+        const data = await r.json();
+        if (data.error) {{
+          document.getElementById('transformOutput').textContent = data.error;
+          return;
+        }}
+        document.getElementById('transformOutput').textContent = JSON.stringify(data, null, 2);
+        showApiResponse(data);
+      }} catch (err) {{
+        document.getElementById('transformOutput').textContent = String(err);
       }}
     }}
 
