@@ -137,7 +137,7 @@ Space_OdT/v21/transformacion/
 
 ---
 
-## 4) Testing y seguridad
+## 4) Implement testing and security measures
 
 ### 4.1 Testing (objetivo MVP)
 - Unit tests para normalización de entrada por script.
