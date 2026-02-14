@@ -140,6 +140,27 @@ Si faltan, el comando crea plantillas automáticamente.
 
 > Nota: en ocasiones la carga masiva en Control Hub resuelve solo una parte y queda una tarea manual para cierre completo. Esta base v2.1 está pensada para soportar ese cierre manual/scriptable.
 
+
+
+### V2.1 Transformación backend (SDK-first)
+
+Se añadieron acciones desacopladas en `Space_OdT/v21/transformacion/`:
+
+- `ubicacion_configurar_pstn.py`
+- `ubicacion_alta_numeraciones_desactivadas.py`
+- `ubicacion_actualizar_cabecera.py`
+- `launcher_prueba_real.py` (ejecución secuencial real contra API)
+
+Todos los scripts hacen `load_dotenv()` al iniciar y escriben log propio en:
+
+- `Space_OdT/v21/transformacion/logs/<nombre_script>.log`
+
+Ejemplo launcher real:
+
+```bash
+python -m Space_OdT.v21.transformacion.launcher_prueba_real   --location-id <LOCATION_ID>   --premise-route-id <ROUTE_GROUP_ID>   --phone-number +34910000001   --phone-number +34910000002   --header-phone-number +34910000001
+```
+
 ### ¿De qué archivos sale la configuración de cada caso en v2.1?
 
 La estructura quedó así para que cada configuración sea simple de modificar:
