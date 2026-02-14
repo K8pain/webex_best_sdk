@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 import csv
 import json
@@ -201,6 +203,7 @@ def build_candidate_rows(exports_dir: Path) -> list[dict[str, str]]:
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     parser = argparse.ArgumentParser(description='Genera CSV de candidatos v21 en base a .artifacts/exports')
     parser.add_argument('--exports-dir', type=Path, default=EXPORTS_DIR)
     parser.add_argument('--output', type=Path, default=DEFAULT_OUTPUT)

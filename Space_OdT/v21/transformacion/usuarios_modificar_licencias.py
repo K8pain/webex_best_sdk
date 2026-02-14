@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -24,6 +26,7 @@ def modificar_licencias_usuario(
     if not add_license_ids and not remove_license_ids:
         raise ValueError('Se requiere al menos una licencia en add_license_ids o remove_license_ids')
 
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
 
@@ -38,6 +41,7 @@ def modificar_licencias_usuario(
     for license_id in remove_license_ids or []:
         license_requests.append(LicenseRequest(id=license_id, operation=LicenseRequestOperation.remove))
 
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {
         'person_id': person_id,
         'org_id': org_id,
@@ -47,12 +51,14 @@ def modificar_licencias_usuario(
 
     response = api.licenses.assign_licenses_to_users(person_id=person_id, licenses=license_requests, org_id=org_id)
     response_payload = model_to_dict(response)
+    # 5) Resultado normalizado para logs/pipelines aguas abajo.
     result = {'status': 'success', 'api_response': {'request': request, 'response': response_payload}}
     log('licenses_response', result)
     return result
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Modificar licencias de usuario (SDK-first)')
     parser.add_argument('--token', default=None)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -20,12 +22,14 @@ def alta_workspace(
     """
     Alta de workspace con validación previa básica por nombre/location.
     """
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
 
     existing = list(api.workspaces.list(display_name=display_name, location_id=location_id, org_id=org_id))
     existing_payload = model_to_dict(existing)
     if existing_payload:
+        # 5) Resultado normalizado para logs/pipelines aguas abajo.
         result = {
             'status': 'skipped',
             'reason': 'workspace_already_exists',
@@ -38,6 +42,7 @@ def alta_workspace(
     if location_id:
         workspace.location_id = location_id
 
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {'workspace': model_to_dict(workspace), 'org_id': org_id}
     log('create_request', request)
 
@@ -50,6 +55,7 @@ def alta_workspace(
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Alta de workspace en Webex Calling')
     parser.add_argument('--token', default=None)

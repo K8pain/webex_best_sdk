@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -22,9 +24,12 @@ def alta_numeraciones_desactivadas(
     if not phone_numbers:
         raise ValueError('phone_numbers no puede ser vacío')
 
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
+    # 2) Snapshot previo: leemos estado actual para trazabilidad y rollback manual.
     before = [model_to_dict(item) for item in api.telephony.location.phone_numbers(location_id=location_id, org_id=org_id)]
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {
         'location_id': location_id,
         'phone_numbers': phone_numbers,
@@ -44,6 +49,7 @@ def alta_numeraciones_desactivadas(
     )
 
     after = [model_to_dict(item) for item in api.telephony.location.phone_numbers(location_id=location_id, org_id=org_id)]
+    # 5) Resultado normalizado para logs/pipelines aguas abajo.
     result = {
         'status': 'success',
         'api_response': {
@@ -58,6 +64,7 @@ def alta_numeraciones_desactivadas(
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Alta numeraciones en ubicación (estado desactivado)')
     parser.add_argument('--token', default=None)

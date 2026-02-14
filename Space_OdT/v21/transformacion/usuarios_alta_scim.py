@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -20,6 +22,7 @@ def alta_usuario_scim(
     active: bool = True,
     display_name: str | None = None,
 ) -> dict[str, Any]:
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
 
@@ -27,6 +30,7 @@ def alta_usuario_scim(
     search = api.scim.users.search(org_id=org_id, filter=filter_expr, count=1)
     existing = [model_to_dict(item) for item in (search.resources or [])]
     if existing:
+        # 5) Resultado normalizado para logs/pipelines aguas abajo.
         result = {
             'status': 'skipped',
             'reason': 'user_already_exists',
@@ -43,6 +47,7 @@ def alta_usuario_scim(
         emails=[EmailObject(value=email, type=EmailObjectType.work, primary=True)],
         name=NameObject(given_name=first_name, family_name=last_name),
     )
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {'org_id': org_id, 'settings': model_to_dict(user)}
     log('create_request', request)
 
@@ -54,6 +59,7 @@ def alta_usuario_scim(
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Alta de usuario vía SCIM v2 (SDK-first)')
     parser.add_argument('--token', default=None)

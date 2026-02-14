@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -19,11 +21,14 @@ def configurar_permisos_salientes_defecto_ubicacion(
     """
     Restablece permisos salientes de ubicación para usar configuración por defecto.
     """
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
 
+    # 2) Snapshot previo: leemos estado actual para trazabilidad y rollback manual.
     before = model_to_dict(api.telephony.location.permissions_out.read(entity_id=location_id, org_id=org_id))
     settings = OutgoingPermissions(use_custom_enabled=False, use_custom_permissions=False)
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {
         'entity_id': location_id,
         'settings': model_to_dict(settings),
@@ -33,15 +38,18 @@ def configurar_permisos_salientes_defecto_ubicacion(
     log('before_read', {'before': before})
     log('configure_request', request)
 
+    # 4) Ejecución del cambio contra Webex Calling.
     api.telephony.location.permissions_out.configure(entity_id=location_id, settings=settings, org_id=org_id)
     after = model_to_dict(api.telephony.location.permissions_out.read(entity_id=location_id, org_id=org_id))
 
+    # 5) Resultado normalizado para logs/pipelines aguas abajo.
     result = {'status': 'success', 'api_response': {'before': before, 'after': after, 'request': request}}
     log('configure_response', result)
     return result
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Configurar permisos salientes por defecto en una ubicación')
     parser.add_argument('--token', default=None)

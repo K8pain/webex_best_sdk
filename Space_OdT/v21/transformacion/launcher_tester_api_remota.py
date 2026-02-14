@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 import json
 from typing import Any, Callable
@@ -26,6 +28,7 @@ ActionFn = Callable[..., dict[str, Any]]
 
 
 def _load_remote_payload(remote_url: str, timeout_s: float) -> dict[str, Any]:
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = Request(remote_url, headers={'Accept': 'application/json'})
     with urlopen(request, timeout=timeout_s) as response:
         raw = response.read().decode('utf-8')
@@ -58,12 +61,14 @@ def _execute_actions(*, token: str, payload: dict[str, Any]) -> dict[str, Any]:
         if action_name not in handlers:
             report['results'].append({'action': action_name, 'status': 'rejected', 'reason': 'unsupported_action'})
             continue
+        # 5) Resultado normalizado para logs/pipelines aguas abajo.
         result = handlers[action_name](token=token, **params)
         report['results'].append({'action': action_name, 'result': result})
     return report
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Launcher tester para consumir acciones desde API remota')
     parser.add_argument('--token', default=None)
