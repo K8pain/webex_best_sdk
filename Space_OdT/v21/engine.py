@@ -28,6 +28,7 @@ class LocationBulkJob:
     totals: dict[str, int] = field(default_factory=dict)
     cursor: dict[str, int] = field(default_factory=dict)
     entity_type: str = 'location'
+    last_error: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,6 +39,7 @@ class LocationBulkJob:
             'totals': self.totals,
             'cursor': self.cursor,
             'entity_type': self.entity_type,
+            'last_error': self.last_error,
         }
 
     @classmethod
@@ -50,6 +52,7 @@ class LocationBulkJob:
             totals=dict(payload.get('totals') or {}),
             cursor=dict(payload.get('cursor') or {}),
             entity_type=str(payload.get('entity_type', 'location')),
+            last_error=dict(payload.get('last_error') or {}),
         )
 
 
@@ -188,23 +191,33 @@ class V21Runner:
         if not final_state.exists():
             job = self.get_job(job_id)
             results_csv = job_dir / 'results.csv'
+            failure_json = job_dir / 'failure.json'
+            failure = dict(job.last_error)
+            if failure_json.exists():
+                failure = dict(json.loads(failure_json.read_text(encoding='utf-8')))
             if not results_csv.exists():
-                return {
+                payload = {
                     'job': job.to_dict(),
                     'totals': job.totals,
                     'api_response': [],
                     'message': 'resultado final aún no disponible',
                 }
+                if job.status == 'failed' and failure:
+                    payload['failure'] = failure
+                return payload
 
             with results_csv.open('r', encoding='utf-8', newline='') as handle:
                 rows = list(csv.DictReader(handle))
 
-            return {
+            payload = {
                 'job': job.to_dict(),
                 'totals': job.totals,
                 'api_response': rows,
                 'message': 'resultado parcial (sin final_state)',
             }
+            if job.status == 'failed' and failure:
+                payload['failure'] = failure
+            return payload
         return json.loads(final_state.read_text(encoding='utf-8'))
 
     def get_async_execution_info(self) -> dict[str, Any]:
