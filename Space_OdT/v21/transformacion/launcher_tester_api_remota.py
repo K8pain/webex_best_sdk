@@ -15,6 +15,9 @@ from .usuarios_modificar_licencias import modificar_licencias_usuario
 from .usuarios_configurar_desvio_prefijo53 import configurar_desvio_prefijo53_usuario
 from .usuarios_configurar_perfil_saliente_custom import configurar_perfil_saliente_custom_usuario
 from .workspaces_alta import alta_workspace
+from .workspaces_anadir_intercom_legacy import anadir_intercom_legacy_workspace
+from .workspaces_configurar_desvio_prefijo53 import configurar_desvio_prefijo53_workspace
+from .workspaces_configurar_perfil_saliente_custom import configurar_perfil_saliente_custom_workspace
 
 ActionFn = Callable[..., dict[str, Any]]
 
@@ -37,6 +40,9 @@ def _execute_actions(*, token: str, payload: dict[str, Any]) -> dict[str, Any]:
         'usuarios_configurar_desvio_prefijo53': configurar_desvio_prefijo53_usuario,
         'usuarios_configurar_perfil_saliente_custom': configurar_perfil_saliente_custom_usuario,
         'workspaces_alta': alta_workspace,
+        'workspaces_anadir_intercom_legacy': anadir_intercom_legacy_workspace,
+        'workspaces_configurar_desvio_prefijo53': configurar_desvio_prefijo53_workspace,
+        'workspaces_configurar_perfil_saliente_custom': configurar_perfil_saliente_custom_workspace,
     }
 
     report: dict[str, Any] = {'source': payload.get('meta', {}), 'results': []}
