@@ -103,11 +103,8 @@ def test_html_contains_sidebar_and_wbxc_menu():
     from Space_OdT.v21.ui import _html_page
 
     html = _html_page()
-    assert 'Space_OdT v2.1 · Configurar PSTN de ubicación' in html
-    assert 'Crear y activar ubicación Webex Calling' not in html
-    assert '/api/transformacion/configurar-pstn' in html
-    assert '/api/transformacion/alta-numeraciones' in html
-    assert '/api/transformacion/actualizar-cabecera' in html
+    assert 'Crear y activar ubicación Webex Calling' in html
+    assert '/api/location-wbxc-jobs' in html
 
 
 def test_list_location_ids_returns_ids_and_metadata(monkeypatch, tmp_path: Path):

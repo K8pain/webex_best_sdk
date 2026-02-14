@@ -13,10 +13,6 @@ from urllib.parse import parse_qs, urlparse
 
 from .engine import MissingV21InputsError, V21Runner
 from .io import load_locations_from_json
-from .transformacion.ubicacion_actualizar_cabecera import actualizar_cabecera_ubicacion
-from .transformacion.ubicacion_alta_numeraciones_desactivadas import alta_numeraciones_desactivadas
-from .transformacion.ubicacion_configurar_pstn import configurar_pstn_ubicacion
-from wxc_sdk.telephony.location.numbers import TelephoneNumberType
 
 
 def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: int = 8765) -> None:
@@ -85,54 +81,6 @@ def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: i
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
-            if parsed.path == '/api/transformacion/configurar-pstn':
-                try:
-                    payload = self._parse_json_body()
-                    result = configurar_pstn_ubicacion(
-                        token=runner.token,
-                        location_id=str(payload.get('locationId') or '').strip(),
-                        premise_route_type=str(payload.get('premiseRouteType') or 'ROUTE_GROUP').strip(),
-                        premise_route_id=str(payload.get('premiseRouteId') or '').strip(),
-                        org_id=str(payload.get('orgId') or '').strip() or None,
-                    )
-                    self._send(result)
-                except Exception as exc:  # noqa: BLE001
-                    self._send({'status': 'error', 'error': str(exc)}, status=400)
-                return
-
-            if parsed.path == '/api/transformacion/alta-numeraciones':
-                try:
-                    payload = self._parse_json_body()
-                    phone_numbers = payload.get('phoneNumbers') or []
-                    if isinstance(phone_numbers, str):
-                        phone_numbers = [line.strip() for line in phone_numbers.splitlines() if line.strip()]
-                    result = alta_numeraciones_desactivadas(
-                        token=runner.token,
-                        location_id=str(payload.get('locationId') or '').strip(),
-                        phone_numbers=phone_numbers,
-                        number_type=TelephoneNumberType(str(payload.get('numberType') or 'DID').strip()),
-                        org_id=str(payload.get('orgId') or '').strip() or None,
-                    )
-                    self._send(result)
-                except Exception as exc:  # noqa: BLE001
-                    self._send({'status': 'error', 'error': str(exc)}, status=400)
-                return
-
-            if parsed.path == '/api/transformacion/actualizar-cabecera':
-                try:
-                    payload = self._parse_json_body()
-                    result = actualizar_cabecera_ubicacion(
-                        token=runner.token,
-                        location_id=str(payload.get('locationId') or '').strip(),
-                        phone_number=str(payload.get('phoneNumber') or '').strip(),
-                        calling_line_name=str(payload.get('callingLineName') or '').strip() or None,
-                        org_id=str(payload.get('orgId') or '').strip() or None,
-                    )
-                    self._send(result)
-                except Exception as exc:  # noqa: BLE001
-                    self._send({'status': 'error', 'error': str(exc)}, status=400)
-                return
-
             if parsed.path in {'/api/location-jobs', '/api/location-wbxc-jobs'}:
                 try:
                     rows, preview = self._parse_upload()
@@ -166,17 +114,6 @@ def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: i
                 return
 
             self._send({'error': 'not found'}, status=404)
-
-        def _parse_json_body(self) -> dict:
-            content_length = int(self.headers.get('Content-Length', '0'))
-            raw = self.rfile.read(content_length)
-            ctype = self.headers.get('Content-Type', '')
-            if 'application/json' not in ctype:
-                raise ValueError('Content-Type debe ser application/json')
-            payload = json.loads(raw.decode('utf-8'))
-            if not isinstance(payload, dict):
-                raise ValueError('El payload JSON debe ser un objeto')
-            return payload
 
         def _parse_upload(self) -> tuple[list[dict], list[dict]]:
             content_length = int(self.headers.get('Content-Length', '0'))
@@ -263,13 +200,13 @@ def _rows_from_multipart(raw: bytes, boundary: bytes) -> list[dict]:
 
 
 def _html_page() -> str:
-    return """<!doctype html>
+    return f"""<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Space_OdT v2.1 · Transformación Ubicación</title>
+  <title>Space_OdT v2.1 location changes</title>
   <style>
-    :root {
+    :root {{
       --bg: #083f1f;
       --panel: #0f6b31;
       --panel-2: #0d5b2a;
@@ -278,28 +215,37 @@ def _html_page() -> str:
       --muted: #c9f5d8;
       --accent: #ffde59;
       --danger: #ffd2d2;
+      --progress: #31d46f;
       --sidebar: #052d15;
       --sidebar-active: #1a8e43;
-    }
-    * { box-sizing: border-box; }
-    body { font-family: Inter, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
-    .layout { display: grid; grid-template-columns: 310px 1fr; min-height: 100vh; }
-    .sidebar { background: var(--sidebar); border-right: 1px solid #176a35; padding: 16px 12px; }
-    .brand { color: var(--accent); margin: 0 0 14px; font-size: 18px; }
-    .menu button { display:block; width:100%; text-align:left; margin:0 0 8px; border:1px solid #176a35; background:#0a4a24; color:var(--text); border-radius:8px; padding:10px; cursor:pointer; font-weight:600; }
-    .menu button.active { background: var(--sidebar-active); }
-    .menu small { display:block; color: var(--muted); font-weight:500; margin-top:4px; }
-    .content { padding: 20px; }
-    .card { background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
-    h1 { margin-top: 0; color: var(--accent); }
-    p.lead { color: var(--muted); margin-top: -6px; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
-    button { border: 1px solid #1d8e45; background: #18863f; color: #fff; border-radius: 8px; padding: 9px 12px; cursor: pointer; font-weight: 600; }
-    input, textarea, select { width:100%; padding:8px; border-radius:8px; border:1px solid #1d8e45; background:#0a4a24; color:#fff; margin-bottom:8px; }
-    textarea { min-height: 90px; }
-    pre { background: #072f17; color: #d9ffe6; padding: 10px; border-radius: 8px; overflow-x: auto; max-height: 420px; border: 1px solid #1e8842; }
-    .error { color: var(--danger); }
-    .muted { color: var(--muted); }
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: Inter, Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }}
+    .layout {{ display: grid; grid-template-columns: 300px 1fr; min-height: 100vh; }}
+    .sidebar {{ background: var(--sidebar); border-right: 1px solid #176a35; padding: 16px 12px; }}
+    .brand {{ color: var(--accent); margin: 0 0 14px; font-size: 18px; }}
+    .menu button {{ display:block; width:100%; text-align:left; margin: 0 0 8px; border:1px solid #176a35; background:#0a4a24; color:var(--text); border-radius:8px; padding:10px; cursor:pointer; font-weight:600; }}
+    .menu button.active {{ background: var(--sidebar-active); }}
+    .menu small {{ display:block; color: var(--muted); font-weight:500; margin-top:4px; }}
+    .content {{ padding: 20px; }}
+    .card {{ background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }}
+    h1 {{ margin-top: 0; color: var(--accent); }}
+    p.lead {{ color: var(--muted); margin-top: -6px; }}
+    .actions {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }}
+    button {{ border: 1px solid #1d8e45; background: #18863f; color: #fff; border-radius: 8px; padding: 9px 12px; cursor: pointer; font-weight: 600; }}
+    button.secondary {{ background: #126e34; }}
+    button.warning {{ background: #8d6b00; border-color: #a37c00; color: #fff8d2; }}
+    input[type=file] {{ color: var(--muted); }}
+    .progress {{ width: 100%; height: 18px; background: #093d1d; border-radius: 12px; overflow: hidden; border: 1px solid #1d8e45; }}
+    .progress > div {{ height: 100%; background: var(--progress); width: 0%; }}
+    table {{ border-collapse: collapse; width: 100%; margin-top: 8px; }}
+    th, td {{ border: 1px solid #1e8842; padding: 6px; font-size: 12px; }}
+    th {{ background: #0f592b; }}
+    pre {{ background: #072f17; color: #d9ffe6; padding: 10px; border-radius: 8px; overflow-x: auto; max-height: 280px; border: 1px solid #1e8842; }}
+    .error {{ color: var(--danger); }}
+    .badge {{ border: 1px solid #e2c028; background: #7d6500; color: #ffefb0; font-size: 11px; border-radius: 999px; padding: 2px 8px; margin-left: 6px; }}
+    .muted {{ color: var(--muted); }}
+    .hidden {{ display: none; }}
   </style>
 </head>
 <body>
@@ -307,14 +253,16 @@ def _html_page() -> str:
     <aside class="sidebar">
       <h2 class="brand">Space_OdT v2.1</h2>
       <nav class="menu">
-        <button id="menu-configurar_pstn" class="active" onclick="selectAction('configurar_pstn')">Configurar PSTN de ubicación<small>premiseRouteType + premiseRouteId</small></button>
-        <button id="menu-alta_numeraciones" onclick="selectAction('alta_numeraciones')">Alta numeraciones en ubicación<small>state INACTIVE</small></button>
-        <button id="menu-anadir_cabecera" onclick="selectAction('anadir_cabecera')">Añadir cabecera de Ubicación<small>calling_line_id.phone_number</small></button>
+        <button id="menu-crear_activar_ubicacion_wbxc" class="active" onclick="selectAction('crear_activar_ubicacion_wbxc')">Crear y activar ubicación Webex Calling<small>Alta de sede + WBXC habilitado</small></button>
+        <button id="menu-listar_location_ids" onclick="selectAction('listar_location_ids')">Lista IDs de ubicaciones creadas<small>Consulta locationId + cabeceras</small></button>
+        <button id="menu-listar_route_groups" onclick="selectAction('listar_route_groups')">Saber valor de routegroupId<small>Identificación RG_CTTI_PRE / RG_NDV</small></button>
+        <button id="menu-configurar_pstn" onclick="selectAction('configurar_pstn')">Configurar PSTN de ubicación<small>premiseRouteType = ROUTE_GROUP</small></button>
+        <button id="menu-alta_numeraciones" onclick="selectAction('alta_numeraciones')">Alta numeraciones en ubicación<small>Carga DID en estado INACTIVE</small></button>
       </nav>
     </aside>
     <main class="content">
-      <h1 id="screenTitle">Space_OdT v2.1 · Configurar PSTN de ubicación</h1>
-      <p class="lead" id="screenLead">UI operativa para técnicos de telefonía, ejecutando scripts SDK reales y mostrando respuesta API real.</p>
+      <h1 id="screenTitle">Space_OdT v2.1 · Crear y activar ubicación Webex Calling</h1>
+      <p class="lead" id="screenLead">Interfaz preparada para el flujo completo de provisión Webex Calling en próximas evolutivas.</p>
 
       <div class="card">
         <h3>Definición funcional</h3>
@@ -324,139 +272,267 @@ def _html_page() -> str:
         <ul id="mandatoryFields"></ul>
       </div>
 
-      <div class="card" id="formCard">
-        <h3>Ejecutar cambio</h3>
-        <div id="formArea"></div>
+      <div class="card" id="uploadCard">
+        <h3>1) Cargar archivo de cambios</h3>
+        <input id="file" type="file" accept=".csv,.json" />
         <div class="actions">
-          <button onclick="executeAction()">Ejecutar acción</button>
+          <button onclick="createJob()">Crear job</button>
+        </div>
+        <div id="uploadInfo"></div>
+        <div id="preview"></div>
+      </div>
+
+      <div class="card" id="orgQueryCard">
+        <h3>1) Consultar IDs de ubicaciones</h3>
+        <input id="orgId" type="text" placeholder="orgId (base64)" style="width:100%; padding:8px; border-radius:8px; border:1px solid #1d8e45; background:#0a4a24; color:#fff;" />
+        <div class="actions">
+          <button onclick="listLocationIds()">Consultar IDs</button>
         </div>
       </div>
 
-      <div class="card">
-        <h3>Respuesta API (real)</h3>
+      <div class="card" id="jobCard">
+        <h3>2) Ejecutar cambio</h3>
+        <div class="actions">
+          <button onclick="startJob()">Aplicar cambios</button>
+          <button class="secondary" onclick="refreshJob()">Actualizar estado</button>
+          <button class="warning" onclick="showFinalConfig()">Ver respuesta API</button>
+        </div>
+        <div id="jobStatus"></div>
+        <div class="progress"><div id="bar"></div></div>
         <div id="errorSummary"></div>
-        <pre id="finalConfig">Aquí se verá la respuesta API real devuelta por backend/script SDK.</pre>
+        <pre id="finalConfig"></pre>
       </div>
     </main>
   </div>
 
   <script>
-    let currentAction = 'configurar_pstn';
+    let currentJobId = null;
+    let currentAction = 'crear_activar_ubicacion_wbxc';
 
-    const ACTIONS = {
-      configurar_pstn: {
+    const ACTIONS = {{
+      crear_activar_ubicacion_wbxc: {{
+        title: 'Space_OdT v2.1 · Crear y activar ubicación Webex Calling',
+        lead: 'Alta de sede habilitando Webex Calling en el mismo paso. Flujo operativo en v2.1.',
+        description: 'Crea la ubicación y deja Webex Calling activo para permitir configuración PSTN posterior.',
+        mandatoryFields: ['orgId', 'announcementLanguage', 'name', 'preferredLanguage', 'timeZone', 'address1', 'city', 'state', 'postalCode', 'country'],
+        note: 'orgId debe enviarse en base64. Para locuciones en catalán: announcementLanguage = ca_es.',
+        endpoint: '/api/location-wbxc-jobs',
+        mode: 'job_upload'
+      }},
+      listar_location_ids: {{
+        title: 'Space_OdT v2.1 · Lista con todos los ID de ubicaciones',
+        lead: 'Consulta rápida de IDs de ubicaciones existentes para siguientes pasos.',
+        description: 'Solo requiere orgId y devuelve la respuesta de API en pantalla.',
+        mandatoryFields: ['orgId'],
+        note: 'No requiere archivo. Esta vista solo ejecuta consulta GET.',
+        endpoint: '/api/location-ids',
+        mode: 'org_query'
+      }},
+      listar_route_groups: {{
+        title: 'Space_OdT v2.1 · Saber valor de routegroupId',
+        lead: 'Preparado para búsqueda de routing groups por organización.',
+        description: 'Consulta route groups y selecciona los valores oficiales por entorno.',
+        mandatoryFields: ['orgId'],
+        note: 'PRE debe usar RG_CTTI_PRE y PRO debe usar RG_NDV.',
+        endpoint: null,
+        mode: 'todo'
+      }},
+      configurar_pstn: {{
         title: 'Space_OdT v2.1 · Configurar PSTN de ubicación',
-        lead: 'Conecta la ubicación a PSTN tipo ROUTE_GROUP o TRUNK.',
-        description: 'Ejecuta script SDK real: lee estado actual PSTN, aplica configuración y devuelve before/after reales.',
+        lead: 'Pantalla lista para conectar PSTN con route group.',
+        description: 'Configura PSTN en ubicación. Este paso es prerequisito para alta de numeraciones.',
         mandatoryFields: ['locationId', 'premiseRouteType', 'premiseRouteId'],
-        note: 'Para el caso operativo habitual usar premiseRouteType=ROUTE_GROUP.',
-        endpoint: '/api/transformacion/configurar-pstn',
-        fields: [
-          { key: 'locationId', label: 'Location ID', type: 'text', placeholder: 'Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OLy4uLg==' },
-          { key: 'orgId', label: 'Org ID (opcional)', type: 'text', placeholder: 'Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi8uLi4=' },
-          { key: 'premiseRouteType', label: 'Premise Route Type', type: 'select', options: ['ROUTE_GROUP', 'TRUNK'] },
-          { key: 'premiseRouteId', label: 'Premise Route ID', type: 'text', placeholder: 'route-group-or-trunk-id' },
-        ],
-      },
-      alta_numeraciones: {
+        note: 'premiseRouteType será siempre ROUTE_GROUP.',
+        endpoint: null,
+        mode: 'todo'
+      }},
+      alta_numeraciones: {{
         title: 'Space_OdT v2.1 · Alta numeraciones en ubicación',
-        lead: 'Carga numeraciones DID/TOLLFREE/MOBILE en estado INACTIVE.',
-        description: 'Ejecuta script SDK real: lista números de la ubicación, añade bloque y devuelve respuesta real de alta.',
+        lead: 'Soporte visual preparado para carga DID (INACTIVE) tras PSTN activo.',
+        description: 'Carga números en formato +34, normalmente como DID con state INACTIVE.',
         mandatoryFields: ['locationId', 'phoneNumbers[]', 'numberType'],
-        note: 'Ingresar una numeración por línea en formato E.164 (+34...).',
-        endpoint: '/api/transformacion/alta-numeraciones',
-        fields: [
-          { key: 'locationId', label: 'Location ID', type: 'text', placeholder: 'Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OLy4uLg==' },
-          { key: 'orgId', label: 'Org ID (opcional)', type: 'text', placeholder: 'Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi8uLi4=' },
-          { key: 'numberType', label: 'Number Type', type: 'select', options: ['DID', 'TOLLFREE', 'MOBILE'] },
-          { key: 'phoneNumbers', label: 'Phone Numbers (una por línea)', type: 'textarea', placeholder: '+34910000001\n+34910000002' },
-        ],
-      },
-      anadir_cabecera: {
-        title: 'Space_OdT v2.1 · Añadir cabecera de Ubicación',
-        lead: 'Actualiza la cabecera de ubicación (calling line) con DDI de cabecera.',
-        description: 'Ejecuta script SDK real: lee details de telephony location, aplica update y devuelve before/after reales.',
-        mandatoryFields: ['locationId', 'phoneNumber'],
-        note: 'Opcionalmente puede enviarse callingLineName para actualizar el nombre de cabecera.',
-        endpoint: '/api/transformacion/actualizar-cabecera',
-        fields: [
-          { key: 'locationId', label: 'Location ID', type: 'text', placeholder: 'Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OLy4uLg==' },
-          { key: 'orgId', label: 'Org ID (opcional)', type: 'text', placeholder: 'Y2lzY29zcGFyazovL3VzL09SR0FOSVpBVElPTi8uLi4=' },
-          { key: 'phoneNumber', label: 'Cabecera phone number', type: 'text', placeholder: '+34910000001' },
-          { key: 'callingLineName', label: 'Cabecera name (opcional)', type: 'text', placeholder: 'SEDE MADRID' },
-        ],
-      },
-    };
+        note: 'Requiere PSTN configurado previamente. Admite fórmula intercom: +3451xxxxxxx.',
+        endpoint: '/api/location-jobs',
+        mode: 'job_upload'
+      }}
+    }};
 
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', () => {{
+      const output = document.getElementById('finalConfig');
+      output.textContent = 'Aquí se verá únicamente: status + api_response';
       applyActionMeta();
-    });
+    }});
 
-    function selectAction(action) {
+    function selectAction(action) {{
       currentAction = action;
-      Object.keys(ACTIONS).forEach((key) => {
-        document.getElementById(`menu-${key}`).classList.toggle('active', key === action);
-      });
-      applyActionMeta();
-    }
+      currentJobId = null;
+      document.getElementById('uploadInfo').innerHTML = '';
+      document.getElementById('preview').innerHTML = '';
+      document.getElementById('jobStatus').innerHTML = '';
+      document.getElementById('bar').style.width = '0%';
+      document.getElementById('errorSummary').innerHTML = '';
+      document.getElementById('finalConfig').textContent = 'Aquí se verá únicamente: status + api_response';
 
-    function applyActionMeta() {
+      Object.keys(ACTIONS).forEach((key) => {{
+        document.getElementById(`menu-${{key}}`).classList.toggle('active', key === action);
+      }});
+      applyActionMeta();
+    }}
+
+    function currentCreateEndpoint() {{
+      return ACTIONS[currentAction].endpoint;
+    }}
+
+    function showApiResponse(payload) {{
+      document.getElementById('finalConfig').textContent = JSON.stringify(payload, null, 2);
+    }}
+
+
+    function renderMandatoryFields(fields) {{
+      const target = document.getElementById('mandatoryFields');
+      if (!Array.isArray(fields) || !fields.length) {{
+        target.innerHTML = '<li>(sin campos obligatorios)</li>';
+        return;
+      }}
+      target.innerHTML = fields.map((field) => `<li><code>${{field}}</code></li>`).join('');
+    }}
+
+    function applyActionMeta() {{
       const meta = ACTIONS[currentAction];
       document.getElementById('screenTitle').textContent = meta.title;
       document.getElementById('screenLead').textContent = meta.lead;
       document.getElementById('actionDescription').textContent = meta.description;
       document.getElementById('importantNote').textContent = meta.note;
-      document.getElementById('mandatoryFields').innerHTML = meta.mandatoryFields.map(f => `<li>${f}</li>`).join('');
-      renderForm(meta.fields);
-      document.getElementById('finalConfig').textContent = 'Aquí se verá la respuesta API real devuelta por backend/script SDK.';
-      document.getElementById('errorSummary').innerHTML = '';
-    }
+      renderMandatoryFields(meta.mandatoryFields || []);
+      document.getElementById('uploadCard').classList.toggle('hidden', meta.mode !== 'job_upload');
+      document.getElementById('jobCard').classList.toggle('hidden', meta.mode !== 'job_upload');
+      document.getElementById('orgQueryCard').classList.toggle('hidden', meta.mode !== 'org_query');
+      const uploadInfo = document.getElementById('uploadInfo');
+      if (meta.mode === 'todo') {{
+        uploadInfo.innerHTML = '<span class="badge">Próximamente</span> Esta acción ya está definida en UI y pendiente de conexión backend.';
+      }}
+    }}
 
-    function renderForm(fields) {
-      const area = document.getElementById('formArea');
-      area.innerHTML = fields.map((field) => {
-        if (field.type === 'select') {
-          return `<label><b>${field.label}</b><select id="field-${field.key}">${field.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}</select></label>`;
-        }
-        if (field.type === 'textarea') {
-          return `<label><b>${field.label}</b><textarea id="field-${field.key}" placeholder="${field.placeholder || ''}"></textarea></label>`;
-        }
-        return `<label><b>${field.label}</b><input id="field-${field.key}" type="text" placeholder="${field.placeholder || ''}" /></label>`;
-      }).join('');
-    }
-
-    function collectPayload() {
-      const meta = ACTIONS[currentAction];
-      const payload = {};
-      meta.fields.forEach((field) => {
-        const el = document.getElementById(`field-${field.key}`);
-        if (!el) return;
-        const value = (el.value || '').trim();
-        if (field.key === 'phoneNumbers') {
-          payload.phoneNumbers = value;
-          return;
-        }
-        payload[field.key] = value;
-      });
-      return payload;
-    }
-
-    async function executeAction() {
-      const meta = ACTIONS[currentAction];
-      const payload = collectPayload();
-      const r = await fetch(meta.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+    async function createJob() {{
+      const fileEl = document.getElementById('file');
+      if (!fileEl.files.length) {{
+        alert('Seleccioná un archivo CSV o JSON');
+        return;
+      }}
+      const fd = new FormData();
+      fd.append('file', fileEl.files[0]);
+      const r = await fetch(currentCreateEndpoint(), {{ method: 'POST', body: fd }});
       const data = await r.json();
-      if (!r.ok || data.error) {
-        document.getElementById('errorSummary').innerHTML = `<span class="error">Error: ${data.error || 'Error de ejecución'}</span>`;
-      } else {
-        document.getElementById('errorSummary').innerHTML = '<span class="muted">Acción ejecutada correctamente contra API.</span>';
-      }
-      document.getElementById('finalConfig').textContent = JSON.stringify(data, null, 2);
-    }
+      if (data.error) {{
+        document.getElementById('uploadInfo').innerHTML = '<span class="error">' + data.error + '</span>';
+        return;
+      }}
+      currentJobId = data.job.job_id;
+      document.getElementById('uploadInfo').innerHTML = `Job <code>${{currentJobId}}</code> creado con ${{data.count}} filas`;
+      showApiResponse(data);
+      renderTable('preview', data.preview || []);
+      renderJob(data.job);
+    }}
+
+    async function listLocationIds() {{
+      const orgId = document.getElementById('orgId').value.trim();
+      if (!orgId) {{
+        alert('Indicá orgId');
+        return;
+      }}
+      const r = await fetch(`/api/location-ids?orgId=${{encodeURIComponent(orgId)}}`);
+      const data = await r.json();
+      showApiResponse(data);
+    }}
+
+    async function startJob() {{
+      if (!currentJobId) {{ alert('Primero creá un job'); return; }}
+      const r = await fetch(`/api/location-jobs/${{currentJobId}}/start`, {{ method: 'POST' }});
+      const data = await r.json();
+      if (data.error) {{ alert(data.error); return; }}
+      showApiResponse(data);
+      renderJob(data.job);
+      pollUntilDone();
+    }}
+
+    async function refreshJob() {{
+      if (!currentJobId) return;
+      const r = await fetch(`/api/location-jobs/${{currentJobId}}`);
+      const data = await r.json();
+      if (!data.error) {{
+        showApiResponse(data);
+        renderJob(data);
+      }}
+    }}
+
+    async function pollUntilDone() {{
+      for (let i = 0; i < 120; i++) {{
+        await refreshJob();
+        const status = document.getElementById('jobStatus').dataset.status;
+        if (status === 'completed' || status === 'failed') return;
+        await new Promise(res => setTimeout(res, 1200));
+      }}
+    }}
+
+    async function showFinalConfig() {{
+      if (!currentJobId) return;
+      const r = await fetch(`/api/location-jobs/${{currentJobId}}/result`);
+      const data = await r.json();
+      if (data.error) {{
+        document.getElementById('finalConfig').textContent = data.error;
+        return;
+      }}
+      const simplified = toStatusAndApiResponse(data);
+      showApiResponse(simplified);
+      const errors = data.totals?.rejected || 0;
+      document.getElementById('errorSummary').innerHTML = `Errores rechazados: <b>${{errors}}</b>`;
+    }}
+
+    function toStatusAndApiResponse(payload) {{
+      const status = payload?.job?.status || payload?.status || 'unknown';
+      const remoteItems = payload?.remote_final_state?.items;
+      const hasRemoteItems = Array.isArray(remoteItems) && remoteItems.length > 0;
+      const hasApiResponse = Array.isArray(payload?.api_response) && payload.api_response.length > 0;
+      const apiResponse = hasRemoteItems ? remoteItems : (hasApiResponse ? payload.api_response : []);
+      const out = {{ status, api_response: sanitizeApiResponse(apiResponse) }};
+      if (!apiResponse.length && payload?.message) out.message = payload.message;
+      return out;
+    }}
+
+    function sanitizeApiResponse(payload) {{
+      if (!payload || typeof payload !== 'object') return payload;
+      if (Array.isArray(payload)) return payload.map(item => sanitizeApiResponse(item));
+      const out = {{}};
+      Object.entries(payload).forEach(([key, value]) => {{
+        if (key === 'before' || key === 'after' || key === 'changed' || key === 'action') return;
+        out[key] = sanitizeApiResponse(value);
+      }});
+      return out;
+    }}
+
+    function renderJob(job) {{
+      const totals = job.totals || {{}};
+      const processed = totals.processed || 0;
+      const total = totals.total || 0;
+      const pct = total ? Math.floor((processed / total) * 100) : 0;
+      const label = `Estado: <b>${{job.status}}</b> | Procesadas: ${{processed}}/${{total}} | OK: ${{totals.success||0}} | Rechazadas: ${{totals.rejected||0}}`;
+      const el = document.getElementById('jobStatus');
+      el.innerHTML = label;
+      el.dataset.status = job.status;
+      document.getElementById('bar').style.width = pct + '%';
+    }}
+
+    function renderTable(targetId, items) {{
+      const target = document.getElementById(targetId);
+      if (!items.length) {{
+        target.innerHTML = '<p>(sin datos)</p>';
+        return;
+      }}
+      const headers = Object.keys(items[0]);
+      const thead = '<tr>' + headers.map(h => `<th>${{h}}</th>`).join('') + '</tr>';
+      const rows = items.map(row => '<tr>' + headers.map(h => `<td>${{row[h] ?? ''}}</td>`).join('') + '</tr>').join('');
+      target.innerHTML = `<table><thead>${{thead}}</thead><tbody>${{rows}}</tbody></table>`;
+    }}
   </script>
 </body>
 </html>
