@@ -12,6 +12,9 @@ from .usuarios_alta_people import alta_usuario_people
 from .usuarios_alta_scim import alta_usuario_scim
 from .usuarios_anadir_intercom_legacy import anadir_intercom_legacy_usuario
 from .usuarios_modificar_licencias import modificar_licencias_usuario
+from .usuarios_configurar_desvio_prefijo53 import configurar_desvio_prefijo53_usuario
+from .usuarios_configurar_perfil_saliente_custom import configurar_perfil_saliente_custom_usuario
+from .workspaces_alta import alta_workspace
 
 ActionFn = Callable[..., dict[str, Any]]
 
@@ -31,6 +34,9 @@ def _execute_actions(*, token: str, payload: dict[str, Any]) -> dict[str, Any]:
         'usuarios_alta_scim': alta_usuario_scim,
         'usuarios_modificar_licencias': modificar_licencias_usuario,
         'usuarios_anadir_intercom_legacy': anadir_intercom_legacy_usuario,
+        'usuarios_configurar_desvio_prefijo53': configurar_desvio_prefijo53_usuario,
+        'usuarios_configurar_perfil_saliente_custom': configurar_perfil_saliente_custom_usuario,
+        'workspaces_alta': alta_workspace,
     }
 
     report: dict[str, Any] = {'source': payload.get('meta', {}), 'results': []}
