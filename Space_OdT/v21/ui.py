@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import io
 import json
 import threading
+import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -135,10 +137,20 @@ def _run_job_background(runner: V21Runner, job_id: str) -> None:
 
     try:
         asyncio.run(runner.process_location_job(job_id, chunk_size=200, max_concurrency=20))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        failure = {
+            'failed_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+            'error_type': type(exc).__name__,
+            'error_message': str(exc),
+            'traceback': traceback.format_exc(),
+        }
         job = runner.get_job(job_id)
         job.status = 'failed'
+        job.last_error = failure
         runner.save_job(job)
+        failure_path = runner.jobs_dir / job_id / 'failure.json'
+        failure_path.parent.mkdir(parents=True, exist_ok=True)
+        failure_path.write_text(json.dumps(failure, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
 
 
 def _rows_from_multipart(raw: bytes, boundary: bytes) -> list[dict]:
