@@ -444,8 +444,13 @@ def _html_page() -> str:
 
     function toStatusAndApiResponse(payload) {{
       const status = payload?.job?.status || payload?.status || 'unknown';
-      const apiResponse = payload?.remote_final_state?.items || payload?.api_response || [];
-      return {{ status, api_response: sanitizeApiResponse(apiResponse) }};
+      const remoteItems = payload?.remote_final_state?.items;
+      const hasRemoteItems = Array.isArray(remoteItems) && remoteItems.length > 0;
+      const hasApiResponse = Array.isArray(payload?.api_response) && payload.api_response.length > 0;
+      const apiResponse = hasRemoteItems ? remoteItems : (hasApiResponse ? payload.api_response : []);
+      const out = {{ status, api_response: sanitizeApiResponse(apiResponse) }};
+      if (!apiResponse.length && payload?.message) out.message = payload.message;
+      return out;
     }}
 
     function sanitizeApiResponse(payload) {{

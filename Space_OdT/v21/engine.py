@@ -186,7 +186,25 @@ class V21Runner:
         job_dir = self.jobs_dir / job_id
         final_state = job_dir / 'final_state.json'
         if not final_state.exists():
-            raise FileNotFoundError('resultado final aún no disponible')
+            job = self.get_job(job_id)
+            results_csv = job_dir / 'results.csv'
+            if not results_csv.exists():
+                return {
+                    'job': job.to_dict(),
+                    'totals': job.totals,
+                    'api_response': [],
+                    'message': 'resultado final aún no disponible',
+                }
+
+            with results_csv.open('r', encoding='utf-8', newline='') as handle:
+                rows = list(csv.DictReader(handle))
+
+            return {
+                'job': job.to_dict(),
+                'totals': job.totals,
+                'api_response': rows,
+                'message': 'resultado parcial (sin final_state)',
+            }
         return json.loads(final_state.read_text(encoding='utf-8'))
 
     def get_async_execution_info(self) -> dict[str, Any]:
