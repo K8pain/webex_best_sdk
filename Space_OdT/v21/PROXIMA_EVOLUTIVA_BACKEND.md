@@ -1,190 +1,198 @@
-# Space_OdT v2.1 · Próxima evolutiva backend (Webex Calling)
+# Space_OdT v2.1 — Development Term Specification Sheet
+## Próxima evolutiva backend (Webex SDK-first)
 
-## 1) Qué vamos a construir
-
-### Objetivo de la feature
-Construir la siguiente evolutiva de backend para soportar, de extremo a extremo, el flujo de provisión de sedes Webex Calling y numeraciones desde un único proceso guiado por acciones.
-
-### Para quién es
-Para equipos de operaciones/implantación (PRE y PRO) que necesitan alta masiva y controlada de ubicaciones, PSTN y DIDs.
-
-### Problema que resuelve
-Actualmente parte del flujo está operativo (alta de sedes y alta+activación WBXC), pero faltan endpoints backend para el resto de acciones del menú:
-1. listar location IDs,
-2. resolver route group IDs,
-3. configurar PSTN,
-4. alta de numeraciones con reglas de negocio.
-
-### Cómo funcionará
-El backend expondrá acciones independientes (orquestables en pipeline) con validación de campos obligatorios, normalización de IDs base64 y auditoría de resultados por job.
-
-### Modelo conceptual (simplificado)
-- **Organization (orgId)**
-  - contiene **Locations**.
-- **Location (locationId)**
-  - puede habilitarse para Webex Calling.
-  - requiere **PSTN config** con `premiseRouteType=ROUTE_GROUP` + `premiseRouteId`.
-  - permite **PhoneNumbers** (DID/TOLLFREE/MOBILE), con estado `INACTIVE` o `ACTIVE`.
-- **RouteGroup (routegroupId)**
-  - se resuelve por nombre de entorno (`RG_CTTI_PRE`, `RG_NDV`).
-
-> Enfoque de diseño: mantener MVP funcional, iterar por verticales y “distill the model” (evitar lógica no esencial en esta fase).
+**Documento**: DTS-21-WEBEX-TRANSFORMACION  
+**Versión**: 1.0  
+**Estado**: Draft listo para implementación  
+**Ámbito**: Automatización de acciones de Ubicación, Usuarios y Workspaces mediante `wxc_sdk`  
+**Ruta objetivo de scripts**: `Space_OdT/v21/transformacion/`  
+**Ruta objetivo de logs**: `Space_OdT/v21/transformacion/logs/`
 
 ---
 
-## 2) Diseño de experiencia de usuario (UI preparada)
+## 1) Definición de lo que se construye
 
-### User stories (happy path)
-1. Operador selecciona “Crear y activar ubicación Webex Calling”.
-2. Carga CSV/JSON y ejecuta job.
-3. Consulta estado y respuesta API simplificada.
-4. Continúa con “Configurar PSTN de ubicación”.
-5. Finalmente ejecuta “Alta numeraciones en ubicación”.
+### 1.1 Qué es
+Evolutiva backend basada en **scripts desacoplados por acción** para ejecutar operaciones de provisión y configuración en Webex Calling usando `wxc_sdk`.
 
-### Flujos alternativos
-- Si falta `orgId` o formato inválido, el backend rechaza antes de llamar API remota.
-- Si PSTN no está configurado, alta de numeraciones devuelve error controlado con mensaje accionable.
-- Si route group no existe para el entorno, se bloquea configuración PSTN con sugerencia PRE/PRO.
+### 1.2 Para quién es
+Equipos técnicos de implantación/operación (PRE/PRO), con necesidad de ejecutar tareas repetibles, auditables y con salida rica en datos reales de API.
 
-### Impacto en navegación UI
-Menú izquierdo con acciones explícitas del proceso:
-- Crear y activar ubicación Webex Calling.
-- Lista IDs de ubicaciones creadas.
-- Saber valor de routegroupId.
-- Configurar PSTN de ubicación.
-- Alta numeraciones en ubicación.
+### 1.3 Problema que resuelve
+Centraliza y estandariza acciones hoy dispersas (PSTN, numeraciones, permisos, licencias, forwarding, etc.) con foco en:
+- mínimo boilerplate,
+- alta mantenibilidad,
+- escalabilidad por crecimiento de acciones,
+- verbosidad útil en outputs con payload/response reales del SDK.
 
-Las acciones no implementadas en backend quedan visibles como “Próximamente” (preparación frontend sin romper flujo actual).
+### 1.4 Cómo funcionará
+Cada acción vive en **su propio script** dentro de `v21/transformacion`, con patrón uniforme:
+1. leer estado actual (`read/list/details`),
+2. aplicar cambio (`configure/update/create/add`),
+3. emitir salida técnica detallada,
+4. registrar trazas en **archivo de log dedicado por acción**.
+
+### 1.5 Modelo conceptual (distilled)
+- **Entidad**: `Location`, `Person`, `Workspace`.
+- **Acción**: script unitario idempotente por capacidad SDK.
+- **Contrato entrada**: parámetros obligatorios mínimos por acción.
+- **Contrato salida**: resultado técnico verboso + resumen ejecutivo corto.
+- **Trazabilidad**: 1 acción = 1 log file rotado por ejecución/fecha.
+
+---
+
+## 2) Diseño de experiencia operativa (UX técnica)
+
+### 2.1 Historias de usuario (happy path)
+1. Operador ejecuta script de acción con parámetros.
+2. El script imprime contexto, request normalizado y respuesta real del SDK.
+3. Se guarda log técnico en fichero propio.
+4. Operador encadena siguiente script del flujo funcional.
+
+### 2.2 Flujos alternativos
+- Ejecución solo lectura para validación previa (sin escritura).
+- Re-ejecución con mismos parámetros para contraste de estado (pre/post).
+- Diferenciación de comportamiento por tipo de entidad (location/person/workspace).
+
+### 2.3 Principios UX
+- salida clara, útil y sin ocultar campos relevantes de API,
+- estructura homogénea entre scripts,
+- cero acoplamiento innecesario entre acciones.
 
 ---
 
 ## 3) Necesidades técnicas
 
-## Definiciones funcionales por acción
+## 3.1 Convenciones de implementación (obligatorias)
 
-### A1. Crear y activar ubicación Webex Calling
-- **Campos obligatorios**: `orgId`, `announcementLanguage`, `name`, `preferredLanguage`, `timeZone`, `address1`, `city`, `state`, `postalCode`, `country`.
-- **Referencia**: Enable a Location for Webex Calling.
-- **Notas**:
-  - `orgId` en base64 (`Y2lz...`).
-  - Para locuciones en catalán: `announcementLanguage=ca_es`.
-  - Resuelve dos pasos en uno: creación + activación Webex Calling.
+### Estructura de carpetas
 
-### A2. Lista con todos los ID de ubicaciones
-- **Campos obligatorios**: `orgId`.
-- **Salida esperada**: `locationId` + metadatos útiles (por ejemplo cabecera existente).
-- **Referencia**: List Locations Webex Calling Details.
+```text
+Space_OdT/v21/transformacion/
+  ubicacion_configurar_pstn.py
+  ubicacion_alta_numeraciones_desactivadas.py
+  ubicacion_actualizar_cabecera.py
+  ubicacion_configurar_llamadas_internas.py
+  ubicacion_configurar_permisos_salientes_defecto.py
+  usuarios_alta_people.py
+  usuarios_alta_scim.py
+  usuarios_modificar_licencias.py
+  usuarios_anadir_intercom_legacy.py
+  usuarios_configurar_desvio_prefijo53.py
+  usuarios_configurar_perfil_saliente_custom.py
+  workspaces_alta.py
+  workspaces_anadir_intercom_legacy.py
+  workspaces_configurar_desvio_prefijo53.py
+  workspaces_configurar_perfil_saliente_custom.py
+  logs/
+```
 
-### A3. Saber valor de routegroupId
-- **Campos obligatorios**: `orgId`.
-- **Salida esperada**: `id`, `name`.
-- **Referencia**: Read the List of Routing Groups.
-- **Regla entorno**:
-  - PRE: `RG_CTTI_PRE`.
-  - PRO: `RG_NDV`.
+### Logging por acción
+- Cada script debe escribir en su propio fichero:
+  - `logs/<nombre_script>.log`
+- Formato recomendado:
+  - timestamp, action_id, entidad, parámetros de entrada relevantes, request SDK, response SDK.
+- No es prioridad en esta fase gestión avanzada de errores/mensajería ejecutiva interna.
 
-### A4. Configurar PSTN de ubicación
-- **Campos obligatorios**: `locationId`, `premiseRouteType`, `premiseRouteId`.
-- **Regla fija**: `premiseRouteType=ROUTE_GROUP`.
-- **Referencia**: Setup PSTN Connection for a Location.
-- **Dependencia**: requisito previo para alta de numeraciones.
+### Estilo técnico
+- Preferir funciones pequeñas sobre clases.
+- Separar creación del cliente SDK del uso del cliente.
+- Reutilizar helpers mínimos comunes solo si reducen boilerplate real.
+- Evitar sobre-ingeniería y lógica transversal no esencial.
 
-### A5. Alta numeraciones en ubicación
-- **Campos obligatorios**: `locationId`, `phoneNumbers[]`, `numberType`.
-- **Recomendación operativa**: cargar DIDs con `state=INACTIVE`.
-- **Referencia**: Add Phone Numbers to a location.
-- **Reglas**:
-  - Formato E.164, ejemplo `+34...`.
-  - No subir numeraciones antes de configurar PSTN.
-  - Fórmula intercom indicada por negocio: extensión `84662701` → `+34514662701`.
+---
 
-### Diseño técnico propuesto (backend)
-- Añadir nuevos handlers REST en `ui.py` y métodos de orquestación en `engine.py`.
-- Usar funciones puras para:
-  - validación de payload,
-  - mapeo PRE/PRO,
-  - normalización de base64 IDs,
-  - construcción de requests a Webex.
-- Introducir Enums/tipos para estados y acciones válidas (evitar estados inválidos).
-- Mantener separación “crear cliente API” vs “usar cliente API” (inyección por parámetro).
+## 3.2 Matriz funcional oficial (SDK reference sheet)
 
-### Persistencia / estructura de datos
-No se requieren tablas nuevas en esta fase (se reutiliza persistencia de jobs y resultados en disco de v2.1).
-Si evoluciona a trazabilidad histórica avanzada, considerar tabla de auditoría por acción y por locationId.
-
-### Dependencias externas
-- APIs Webex Calling (Locations, Routing Groups, PSTN, Numbers).
-- Token válido con scopes necesarios.
-
-### Edge cases a documentar
-- timeouts/red intermitente.
-- `orgId` no decodificable.
-- `locationId` inexistente.
-- route group no encontrado por nombre.
-- numeración inválida o duplicada.
+| Sección | Acción | Subtareas / paso (visión SDK) | Campos obligatorios (SDK) | Referencia SDK | Documentación SDK | Método SDK |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ubicación | Configurar PSTN de Ubicación | Leer configuración PSTN actual de la sede | `org_id` (opcional) | PSTN settings (org-level) | https://wxc-sdk.readthedocs.io/en/1.27.1/_modules/wxc_sdk/telephony/pstn.html | `api.telephony.pstn.list()` |
+| Ubicación | Configurar PSTN de Ubicación | Aplicar conexión PSTN (`TRUNK`/`ROUTE_GROUP`) a la ubicación | `location_id`, `settings` (`PstnConnection`) | PSTN settings (location connection) | https://wxc-sdk.readthedocs.io/en/1.27.1/_modules/wxc_sdk/telephony/pstn.html | `api.telephony.pstn.configure(location_id=..., settings=...)` |
+| Ubicación | Alta numeraciones en ubicación (estado desactivado) | Comprobar numeraciones actuales de la ubicación | `location_id`, `org_id` (opcional) | Location numbers (consulta) | https://wxc-sdk.readthedocs.io/en/1.26.0/_modules/wxc_sdk/telephony/location.html | `api.telephony.location.phone_numbers(location_id=...)` |
+| Ubicación | Alta numeraciones en ubicación (estado desactivado) | Añadir bloque de DDIs (normalmente con `state=INACTIVE`) | `location_id`, `numbers` (lista `LocationNumber`) | Location numbers (alta) | https://wxc-sdk.readthedocs.io/en/1.26.0/_modules/wxc_sdk/telephony/location.html | `api.telephony.location.number.add(location_id=..., numbers=[...])` |
+| Ubicación | Añadir cabecera de Ubicación | Leer detalle Webex Calling de la ubicación | `location_id`, `org_id` (opcional) | TelephonyLocation details | https://wxc-sdk.readthedocs.io/en/1.26.0/apidoc/wxc_sdk.telephony.location.html | `api.telephony.location.details(location_id=...)` |
+| Ubicación | Añadir cabecera de Ubicación | Actualizar `calling_line_id.phone_number` con DDI cabecera | `location_id`, `settings` (`TelephonyLocation`) | TelephonyLocation update | https://wxc-sdk.readthedocs.io/en/1.26.0/apidoc/wxc_sdk.telephony.location.html | `api.telephony.location.update(location_id=..., settings=...)` |
+| Ubicación | Configuración llamadas internas | Leer configuración actual de marcación interna | `entity_id=location_id`, `org_id` (opcional) | Location internal dialing (consulta) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.telephony.location.internal_dialing.html | `api.telephony.location.internal_dialing.read(entity_id=...)` |
+| Ubicación | Configuración llamadas internas | Activar enrutado a `ROUTE_GROUP` para extensiones desconocidas | `entity_id=location_id`, `settings` (`InternalDialing`) | Location internal dialing (configuración) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.telephony.location.internal_dialing.html | `api.telephony.location.internal_dialing.configure(entity_id=..., settings=...)` |
+| Ubicación | Configurar Permisos de Llamadas Salientes por Defecto | Leer permisos salientes por defecto de sede | `entity_id=location_id`, `org_id` (opcional) | Outgoing permissions (location lectura) | https://wxc-sdk.readthedocs.io/en/1.27.0/apidoc/wxc_sdk.person_settings.permissions_out.html | `api.telephony.location.permissions_out.read(entity_id=...)` |
+| Ubicación | Configurar Permisos de Llamadas Salientes por Defecto | Aplicar perfil de permisos salientes “defecto” | `entity_id=location_id`, `settings` (`OutgoingPermissions`) | Outgoing permissions (location escritura) | https://wxc-sdk.readthedocs.io/en/1.27.0/apidoc/wxc_sdk.person_settings.permissions_out.html | `api.telephony.location.permissions_out.configure(entity_id=..., settings=...)` |
+| Usuarios | Alta usuario | Crear usuario clásico (People API) con datos básicos | `person` (`emails`, `display_name`, etc.) | People management (alta directa) | https://wxc-sdk.readthedocs.io/en/1.21.1/apidoc/wxc_sdk.people.html | `api.people.create(person=...)` |
+| Usuarios | Alta usuario | Crear usuario vía SCIM 2.0 (objetivo futuro recomendado) | `user` SCIM (`user_name`, `emails`, `active`, etc.) | SCIM 2 Users | https://wxc-sdk.readthedocs.io/en/1.26.0/apidoc/wxc_sdk.scim.users.html | `api.scim.users.create(user=...)` |
+| Usuarios | Modificación de licencias en usuarios | Consultar licencias asignadas a usuario(s) | `org_id` (opcional), `license_id` (opcional), `user_id` (opcional) | Licenses assigned users | https://wxc-sdk.readthedocs.io/en/1.27.1/_modules/wxc_sdk/licenses.html | `api.licenses.assigned_users(license_id=..., org_id=...)` |
+| Usuarios | Modificación de licencias en usuarios | Añadir/eliminar licencias (PATCH masivo GICAR/SOSTIC) | `org_id` (opcional), `request` (`LicenseAssignmentRequest`) | Licenses assign | https://wxc-sdk.readthedocs.io/en/1.27.1/_modules/wxc_sdk/licenses.html | `api.licenses.assign_licenses_to_users(org_id=..., request=...)` |
+| Usuarios | Añadir Número de Intercomunicación Legacy (Secundario) | Leer numeraciones actuales del usuario | `entity_id=person_id`, `org_id` (opcional) | Person numbers (lectura) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.person_settings.numbers.html | `api.person_settings.numbers.read(entity_id=...)` |
+| Usuarios | Añadir Número de Intercomunicación Legacy (Secundario) | Actualizar numeraciones añadiendo DDI secundario (`primary=false`, `action=ADD`) | `entity_id=person_id`, `numbers` (`PersonNumbers`) | Person numbers (actualización) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.person_settings.numbers.html | `api.person_settings.numbers.update(entity_id=..., numbers=...)` |
+| Usuarios | Configurar Desvío a Plataforma Antigua (Prefijo 53) | Leer configuración actual de desvíos del usuario | `entity_id=person_id`, `org_id` (opcional) | Person forwarding (lectura) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.person_settings.forwarding.html | `api.person_settings.forwarding.read(entity_id=...)` |
+| Usuarios | Configurar Desvío a Plataforma Antigua (Prefijo 53) | Activar desvío `always` hacia `53 + extensión` | `entity_id=person_id`, `settings` (`Forwarding`) | Person forwarding (configuración) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.person_settings.forwarding.html | `api.person_settings.forwarding.configure(entity_id=..., settings=...)` |
+| Usuarios | Configurar Perfil de Llamadas Salientes (si difiere del defecto) | Leer permisos salientes efectivos del usuario | `entity_id=person_id`, `org_id` (opcional) | Outgoing permissions (user lectura) | https://wxc-sdk.readthedocs.io/en/1.27.0/apidoc/wxc_sdk.person_settings.permissions_out.html | `api.person_settings.permissions_out.read(entity_id=...)` |
+| Usuarios | Configurar Perfil de Llamadas Salientes (si difiere del defecto) | Aplicar perfil custom (`useCustomEnabled`, categorías, etc.) | `entity_id=person_id`, `settings` (`OutgoingPermissions`) | Outgoing permissions (user escritura) | https://wxc-sdk.readthedocs.io/en/1.27.0/apidoc/wxc_sdk.person_settings.permissions_out.html | `api.person_settings.permissions_out.configure(entity_id=..., settings=...)` |
+| Workspaces | Alta de Workspace | Crear workspace (`displayName`, `location`, tipo, etc.) | `display_name` (mínimo), opcional `location_id`, `calling` | Workspaces API alta | https://wxc-sdk.readthedocs.io/en/1.26.0/apidoc/wxc_sdk.workspaces.html | `api.workspaces.create(workspace=Workspace.create(display_name=...))` |
+| Workspaces | Alta de Workspace | Consultar/buscar workspaces (validación duplicados) | filtros opcionales (`display_name`, `location_id`, etc.) | Workspaces API consulta | https://wxc-sdk.readthedocs.io/en/1.26.0/apidoc/wxc_sdk.workspaces.html | `api.workspaces.list(display_name=..., location_id=...)` |
+| Workspaces | Añadir Número de Intercomunicación Legacy (Secundario) | Leer numeraciones actuales del workspace | `entity_id=workspace_id`, `org_id` (opcional) | Workspace numbers (lectura) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.workspace_settings.numbers.html | `api.workspace_settings.numbers.read(entity_id=...)` |
+| Workspaces | Añadir Número de Intercomunicación Legacy (Secundario) | Actualizar numeraciones añadiendo DDI secundario (`primary=false`, `action=ADD`) | `entity_id=workspace_id`, `numbers` (lista TNs) | Workspace numbers (actualización) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.workspace_settings.numbers.html | `api.workspace_settings.numbers.update(entity_id=..., numbers=...)` |
+| Workspaces | Configurar Desvío a Plataforma Antigua (Prefijo 53) | Leer configuración de desvíos del workspace | `entity_id=workspace_id`, `org_id` (opcional) | Workspace forwarding (lectura) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.workspace_settings.forwarding.html | `api.workspace_settings.forwarding.read(entity_id=...)` |
+| Workspaces | Configurar Desvío a Plataforma Antigua (Prefijo 53) | Activar desvío `always` hacia `53 + extensión` | `entity_id=workspace_id`, `settings` (`Forwarding`) | Workspace forwarding (configuración) | https://wxc-sdk.readthedocs.io/en/1.27.1/apidoc/wxc_sdk.workspace_settings.forwarding.html | `api.workspace_settings.forwarding.configure(entity_id=..., settings=...)` |
+| Workspaces | Configurar Perfil de Llamadas Salientes (si difiere del defecto) | Leer permisos salientes efectivos del workspace | `entity_id=workspace_id`, `org_id` (opcional) | Outgoing permissions (workspace lectura) | https://wxc-sdk.readthedocs.io/en/1.27.0/apidoc/wxc_sdk.person_settings.permissions_out.html | `api.workspace_settings.permissions_out.read(entity_id=...)` |
+| Workspaces | Configurar Perfil de Llamadas Salientes (si difiere del defecto) | Aplicar perfil custom de permisos salientes | `entity_id=workspace_id`, `settings` (`OutgoingPermissions`) | Outgoing permissions (workspace escritura) | https://wxc-sdk.readthedocs.io/en/1.27.0/apidoc/wxc_sdk.person_settings.permissions_out.html | `api.workspace_settings.permissions_out.configure(entity_id=..., settings=...)` |
 
 ---
 
 ## 4) Testing y seguridad
 
-### Testing mínimo por acción
-- **Unit tests**: validadores de payload, mapeos PRE/PRO, normalización de IDs.
-- **Regression tests**: endpoints existentes (`/api/location-jobs`, `/api/location-wbxc-jobs`) no deben romperse.
-- **Integration tests** (mock API Webex): secuencia A1 → A4 → A5.
-- **E2E liviano UI**: selección de acciones, estados “Próximamente”, creación de job en acciones activas.
+### 4.1 Testing (objetivo MVP)
+- Unit tests para normalización de entrada por script.
+- Smoke tests de composición request/response (mock SDK).
+- Validación de contrato de salida (estructura y campos verbosos esperados).
 
-### Cobertura objetivo
-Cobertura funcional de casos críticos y errores de negocio; no perseguir 100% lineal.
+### 4.2 Side-effects
+- Riesgo de configuraciones inconsistentes si se altera el orden lógico read→write.
+- Riesgo funcional por versionado SDK entre 1.26.x y 1.27.x.
 
-### Seguridad
-- Validación estricta de input.
-- No persistir tokens en logs.
-- Sanitización de respuestas antes de renderizar UI.
-- Control de scopes mínimos del token.
+### 4.3 Seguridad de salida y logs
+- Enmascarar secretos/tokens.
+- Guardar solo parámetros funcionales.
+- Evitar incluir credenciales en command-line history.
 
 ---
 
 ## 5) Plan de trabajo
 
-### Estimación inicial
-- **Total**: 4–6 días hábiles.
+### 5.1 Estimación
+- 5–7 días hábiles (MVP técnico).
 
-### Pasos sugeridos
-1. **Milestone 1 (1 día)**: endpoint listar location IDs + tests.
-2. **Milestone 2 (1 día)**: endpoint route groups + selector PRE/PRO + tests.
-3. **Milestone 3 (1–2 días)**: endpoint PSTN location + validaciones + tests.
-4. **Milestone 4 (1 día)**: endpoint numeraciones + reglas INACTIVE/E.164 + tests.
-5. **Milestone 5 (1 día)**: hardening, documentación operativa y regresión.
+### 5.2 Milestones
+1. **Base común mínima** (0.5–1 día): utilidades de cliente SDK + logger por script.
+2. **Ubicación** (1.5–2 días): PSTN, numeraciones, cabecera, internas, permisos.
+3. **Usuarios** (1.5–2 días): alta, licencias, números legacy, forwarding, permisos.
+4. **Workspaces** (1.5–2 días): alta, números legacy, forwarding, permisos.
+5. **Hardening documental** (0.5 día): ejemplos de ejecución y outputs.
 
-### Riesgos principales
-- Dependencias de API externa (latencia/cuotas/scopes).
-- Inconsistencias de datos por entorno PRE/PRO.
-
-### Requerido vs opcional (DoD)
-- **Requerido**: acciones A2/A3/A4/A5 operativas con tests básicos.
-- **Opcional**: wizard encadenado automático en UI.
+### 5.3 Definition of Done
+- Cada acción implementada en script independiente bajo `v21/transformacion`.
+- Cada script con su log dedicado en `v21/transformacion/logs`.
+- Output verboso útil con información real devuelta por SDK.
+- Boilerplate minimizado y helpers comunes estrictamente necesarios.
 
 ---
 
 ## 6) Ripple effects
 
-- Actualizar documentación funcional/operativa para implantación.
-- Alinear comunicación con equipo de operaciones sobre orden obligatorio de pasos (PSTN antes de numeraciones).
-- Revisar plantillas CSV/JSON compartidas con negocio.
+- Actualizar documentación operativa de ejecución por lotes.
+- Alinear naming y orden de ejecución con equipos PRE/PRO.
+- Publicar catálogo de scripts y parámetros obligatorios en runbook.
 
 ---
 
-## 7) Contexto amplio y evolución futura
+## 7) Contexto amplio y evolución
 
-### Limitaciones actuales
-- Flujo parcialmente manual entre acciones.
-- Dependencia fuerte de datos estáticos de entorno.
+### 7.1 Limitaciones actuales
+- Sin capa de orquestación global unificada (intencional en MVP).
+- Sin framework avanzado de recuperación/errores en primera fase.
 
-### Extensiones futuras
-- Asistente guiado por etapas con validación previa (“preflight”).
-- Resolución automática de routegroupId por entorno.
-- Reintentos idempotentes por acción.
+### 7.2 Evoluciones recomendadas
+- Motor de pipeline declarativo (YAML/JSON) que encadene scripts.
+- Idempotencia fuerte por hash de entrada y estado remoto.
+- Report consolidado multi-acción por entidad.
 
-### Moonshots
-- Pipeline declarativo completo por sede (YAML/JSON) con rollback parcial.
-- Observabilidad operacional (métricas por acción, tiempo medio, tasa de rechazo).
+### 7.3 Moonshot
+- Control plane de transformaciones con scheduling, dry-run integral y diff automático pre/post sobre estado Webex.
