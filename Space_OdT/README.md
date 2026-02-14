@@ -156,6 +156,9 @@ Se añadieron acciones desacopladas en `Space_OdT/v21/transformacion/`:
 - `usuarios_alta_scim.py`
 - `usuarios_modificar_licencias.py`
 - `usuarios_anadir_intercom_legacy.py`
+- `usuarios_configurar_desvio_prefijo53.py`
+- `usuarios_configurar_perfil_saliente_custom.py`
+- `workspaces_alta.py`
 - `launcher_tester_api_remota.py` (tester que recibe acciones desde API remota)
 
 Todos los scripts hacen `load_dotenv()` al iniciar y escriben log propio en:
