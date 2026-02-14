@@ -33,7 +33,8 @@ from .workspaces_configurar_desvio_prefijo53 import configurar_desvio_prefijo53_
 from .workspaces_configurar_perfil_saliente_custom import configurar_perfil_saliente_custom_workspace
 
 ActionFn = Callable[..., dict[str, Any]]
-DEFAULT_CSV = Path('.artifacts/exports/v21_transformacion_candidatos.csv')
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_CSV = REPO_ROOT / '.artifacts' / 'exports' / 'v21_transformacion_candidatos.csv'
 
 HANDLERS: dict[str, ActionFn] = {
     'ubicacion_actualizar_cabecera': actualizar_cabecera_ubicacion,
