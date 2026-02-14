@@ -1,0 +1,98 @@
+{
+  "action_auto_attendant.py": {
+    "aa_name": "AA-V21-LAB",
+    "extension": "5101",
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "schedule_name": "Horario-LAB-LV"
+  },
+  "action_call_pickup_group.py": {
+    "extension": "5101",
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "member_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "pickup_name": "PG-V21-LAB"
+  },
+  "action_call_profiles.py": {
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA"
+  },
+  "action_call_queue.py": {
+    "extension": "5101",
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "member_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "queue_id": "Y2lzY29zcGFyazovL3VzL0NBTExfUVVFVUUvYjAwMDAwMDAtMTExMS0yMjIyLTMzMzMtNDQ0NDQ0NDQ0NDQ0",
+    "queue_name": "CQ-V21-LAB"
+  },
+  "action_day_t_numbers_caller_id.py": {
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "primary_number": "+34915550101"
+  },
+  "action_delegated_admin.py": {
+    "principal_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "role_id": "Y2lzY29zcGFyazovL3VzL1JPTEUvaWRfdXNlcl9hZG1pbg",
+    "scope": "organization"
+  },
+  "action_devices.py": {
+    "device_model": "Cisco 8851",
+    "workspace_id": "Y2lzY29zcGFyazovL3VybjpURUFNOnVzLXdlc3QtMl9yL1BMQUNFLzQyOGI3NzVhLWYxNTgtNDVkOC1hOTJhLTg1OTllNTVjM2UxYw",
+    "serial": "FTX1234LAB1"
+  },
+  "action_group_assignment.py": {
+    "group_id": "Y2lzY29zcGFyazovL3VzL1NDSU1fR1JPVVAvYzAwMDAwMDAtMTExMS0yMjIyLTMzMzMtNDQ0NDQ0NDQ0NDQ0OmUwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "group_name": "LAB-GROUP-VOICE",
+    "member_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ"
+  },
+  "action_hunt_group.py": {
+    "extension": "5101",
+    "hunt_name": "HG-V21-LAB",
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "member_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ"
+  },
+  "action_internal_extensions_sbc.py": {
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "route_group_id": "Y2lzY29zcGFyazovL3VzL1JPVVRFX0dST1VQL2QwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "route_group_name": "RG-V21-LAB",
+    "trunk_id": "Y2lzY29zcGFyazovL3VzL1RSVU5LL2UwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "trunk_name": "TRUNK-V21-LAB"
+  },
+  "action_interplatform_dial_plan.py": {
+    "dial_pattern": "+3491XXXXXXX",
+    "dial_plan_name": "DP-V21-LAB",
+    "route_group_id": "Y2lzY29zcGFyazovL3VzL1JPVVRFX0dST1VQL2QwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA"
+  },
+  "action_legacy_forwarding.py": {
+    "forward_destination": "+34915550123",
+    "person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ"
+  },
+  "action_location_number_removal.py": {
+    "location_id": "Y2lzY29zcGFyazovL3VzL0xPQ0FUSU9OL2YwMDAwMDAwLTExMTEtMjIyMi0zMzMzLTQ0NDQ0NDQ0NDQ0NA",
+    "primary_number": "+34915550101"
+  },
+  "action_manager_assistant.py": {
+    "assistant_person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ"
+  },
+  "action_monitoring.py": {
+    "person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "target_person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9iMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ"
+  },
+  "action_nominal_users.py": {
+    "email": "dummy.user.v21@lab.example.com",
+    "extension": "5101",
+    "person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "primary_number": "+34915550101"
+  },
+  "action_secondary_numbers.py": {
+    "extension": "5101",
+    "person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ",
+    "secondary_number": "+34915550222"
+  },
+  "action_user_recording.py": {
+    "person_id": "Y2lzY29zcGFyazovL3VzL1BFT1BMRS9hMDAwMDAwMC0xMTExLTIyMjItMzMzMy00NDQ0NDQ0NDQ0NDQ"
+  },
+  "action_workspaces.py": {
+    "extension": "5101",
+    "primary_number": "+34915550101",
+    "workspace_id": "Y2lzY29zcGFyazovL3VybjpURUFNOnVzLXdlc3QtMl9yL1BMQUNFLzQyOGI3NzVhLWYxNTgtNDVkOC1hOTJhLTg1OTllNTVjM2UxYw",
+    "workspace_name": "WS-V21-LAB"
+  }
+}
