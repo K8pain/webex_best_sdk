@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import datetime as dt
 import json
 import os

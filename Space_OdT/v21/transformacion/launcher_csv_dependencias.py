@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 import csv
 import json
@@ -98,6 +100,7 @@ def _run_row(*, row: dict[str, str], token: str, auto_confirm: bool, dry_run: bo
         return {'script_name': script_name, 'status': 'dry_run', 'params': params, 'invocation': invocation_payload}
 
     try:
+        # 5) Resultado normalizado para logs/pipelines aguas abajo.
         result = HANDLERS[script_name](token=token, **params)
     except Exception as exc:  # noqa: BLE001 - El launcher debe continuar con la siguiente fila.
         LOGGER.exception('Fallo ejecutando %s con params=%s', script_name, json.dumps(params, ensure_ascii=False, sort_keys=True))
@@ -115,6 +118,7 @@ def _run_row(*, row: dict[str, str], token: str, auto_confirm: bool, dry_run: bo
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Launcher v21 que usa CSV de dependencias y confirma antes de ejecutar')
     parser.add_argument('--csv-path', type=Path, default=DEFAULT_CSV)

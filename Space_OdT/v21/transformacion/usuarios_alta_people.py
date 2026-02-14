@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -23,12 +25,14 @@ def alta_usuario_people(
     phone_number: str | None = None,
     org_id: str | None = None,
 ) -> dict[str, Any]:
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
     people_api: PeopleApi = api.people
 
     existing = [model_to_dict(item) for item in people_api.list(email=email, org_id=org_id)]
     if existing:
+        # 5) Resultado normalizado para logs/pipelines aguas abajo.
         result = {
             'status': 'skipped',
             'reason': 'user_already_exists',
@@ -48,6 +52,7 @@ def alta_usuario_people(
         phone_numbers=phone_number and [PhoneNumber(value=phone_number)] or None,
     )
 
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {
         'org_id': org_id,
         'calling_data': True,
@@ -64,6 +69,7 @@ def alta_usuario_people(
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Alta de usuarios en People API (SDK-first)')
     parser.add_argument('--token', default=None)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -25,9 +27,11 @@ def configurar_desvio_prefijo53_workspace(
     """
     Configura desvío incondicional del workspace a plataforma legacy con prefijo 53.
     """
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
 
+    # 2) Snapshot previo: leemos estado actual para trazabilidad y rollback manual.
     before = model_to_dict(api.workspace_settings.forwarding.read(entity_id=workspace_id, org_id=org_id))
 
     target_destination = destination or f'53{extension}'
@@ -45,6 +49,7 @@ def configurar_desvio_prefijo53_workspace(
         business_continuity=PersonForwardingSetting.default().business_continuity,
     )
 
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {
         'entity_id': workspace_id,
         'org_id': org_id,
@@ -53,15 +58,18 @@ def configurar_desvio_prefijo53_workspace(
     log('before_read', {'before': before})
     log('configure_request', request)
 
+    # 4) Ejecución del cambio contra Webex Calling.
     api.workspace_settings.forwarding.configure(entity_id=workspace_id, forwarding=forwarding, org_id=org_id)
     after = model_to_dict(api.workspace_settings.forwarding.read(entity_id=workspace_id, org_id=org_id))
 
+    # 5) Resultado normalizado para logs/pipelines aguas abajo.
     result = {'status': 'success', 'api_response': {'before': before, 'after': after, 'request': request}}
     log('configure_response', result)
     return result
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Configurar desvío prefijo 53 para workspace')
     parser.add_argument('--token', default=None)

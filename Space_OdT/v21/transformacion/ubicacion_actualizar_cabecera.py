@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 from typing import Any
 
@@ -18,8 +20,10 @@ def actualizar_cabecera_ubicacion(
     org_id: str | None = None,
     calling_line_name: str | None = None,
 ) -> dict[str, Any]:
+    # 1) Inicialización: logger por acción y cliente API autenticado.
     log = action_logger(SCRIPT_NAME)
     api = create_api(token)
+    # 2) Snapshot previo: leemos estado actual para trazabilidad y rollback manual.
     before = model_to_dict(api.telephony.location.details(location_id=location_id, org_id=org_id))
 
     settings = api.telephony.location.details(location_id=location_id, org_id=org_id)
@@ -33,6 +37,7 @@ def actualizar_cabecera_ubicacion(
         else:
             settings.calling_line_id.name = calling_line_name
 
+    # 3) Payload final: registramos exactamente qué se enviará al endpoint.
     request = {
         'location_id': location_id,
         'phone_number': phone_number,
@@ -44,6 +49,7 @@ def actualizar_cabecera_ubicacion(
 
     batch_job_id = api.telephony.location.update(location_id=location_id, settings=settings, org_id=org_id)
     after = model_to_dict(api.telephony.location.details(location_id=location_id, org_id=org_id))
+    # 5) Resultado normalizado para logs/pipelines aguas abajo.
     result = {
         'status': 'success',
         'api_response': {'before': before, 'after': after, 'request': request, 'batch_job_id': batch_job_id},
@@ -53,6 +59,7 @@ def actualizar_cabecera_ubicacion(
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Añadir/actualizar cabecera de ubicación (calling_line_id.phone_number)')
     parser.add_argument('--token', default=None)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+
 import argparse
 import json
 
@@ -12,6 +14,7 @@ from .ubicacion_configurar_pstn import configurar_pstn_ubicacion
 
 
 def main() -> None:
+    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
     parser = argparse.ArgumentParser(description='Launcher real SDK para flujo Ubicación v2.1')
     parser.add_argument('--token', default=None)
