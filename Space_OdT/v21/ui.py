@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .engine import MissingV21InputsError, V21Runner
-from .io import LOCATION_HEADERS, LOCATION_REQUIRED_CREATE_FIELDS, load_locations_from_json
+from .io import load_locations_from_json
 
 
 def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: int = 8765) -> None:
@@ -200,10 +200,6 @@ def _rows_from_multipart(raw: bytes, boundary: bytes) -> list[dict]:
 
 
 def _html_page() -> str:
-    required = ''.join(
-        f"<li><code>{field}</code></li>"
-        for field in LOCATION_HEADERS
-    )
     return f"""<!doctype html>
 <html lang="es">
 <head>
@@ -276,7 +272,7 @@ def _html_page() -> str:
         <ul id="mandatoryFields"></ul>
       </div>
 
-      <div class="card">
+      <div class="card" id="uploadCard">
         <h3>1) Cargar archivo de cambios</h3>
         <input id="file" type="file" accept=".csv,.json" />
         <div class="actions">
@@ -286,7 +282,15 @@ def _html_page() -> str:
         <div id="preview"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="orgQueryCard">
+        <h3>1) Consultar IDs de ubicaciones</h3>
+        <input id="orgId" type="text" placeholder="orgId (base64)" style="width:100%; padding:8px; border-radius:8px; border:1px solid #1d8e45; background:#0a4a24; color:#fff;" />
+        <div class="actions">
+          <button onclick="listLocationIds()">Consultar IDs</button>
+        </div>
+      </div>
+
+      <div class="card" id="jobCard">
         <h3>2) Ejecutar cambio</h3>
         <div class="actions">
           <button onclick="startJob()">Aplicar cambios</button>
@@ -297,12 +301,6 @@ def _html_page() -> str:
         <div class="progress"><div id="bar"></div></div>
         <div id="errorSummary"></div>
         <pre id="finalConfig"></pre>
-      </div>
-
-      <div class="card">
-        <h3>Campos esperados</h3>
-        <p class="lead">Estos son los campos que se subirán en el archivo CSV/JSON.</p>
-        <ul>{required}</ul>
       </div>
     </main>
   </div>
@@ -319,16 +317,16 @@ def _html_page() -> str:
         mandatoryFields: ['orgId', 'announcementLanguage', 'name', 'preferredLanguage', 'timeZone', 'address1', 'city', 'state', 'postalCode', 'country'],
         note: 'orgId debe enviarse en base64. Para locuciones en catalán: announcementLanguage = ca_es.',
         endpoint: '/api/location-wbxc-jobs',
-        implemented: true
+        mode: 'job_upload'
       }},
       listar_location_ids: {{
         title: 'Space_OdT v2.1 · Lista con todos los ID de ubicaciones',
-        lead: 'Vista preparada para consultar locationId y estado de numeración/cabecera.',
-        description: 'Obtiene locations existentes para revisar identificadores y contexto técnico.',
+        lead: 'Consulta rápida de IDs de ubicaciones existentes para siguientes pasos.',
+        description: 'Solo requiere orgId y devuelve la respuesta de API en pantalla.',
         mandatoryFields: ['orgId'],
-        note: 'Permite validar si ya existe número de cabecera antes de configurar numeraciones.',
-        endpoint: null,
-        implemented: false
+        note: 'No requiere archivo. Esta vista solo ejecuta consulta GET.',
+        endpoint: '/api/location-ids',
+        mode: 'org_query'
       }},
       listar_route_groups: {{
         title: 'Space_OdT v2.1 · Saber valor de routegroupId',
@@ -337,7 +335,7 @@ def _html_page() -> str:
         mandatoryFields: ['orgId'],
         note: 'PRE debe usar RG_CTTI_PRE y PRO debe usar RG_NDV.',
         endpoint: null,
-        implemented: false
+        mode: 'todo'
       }},
       configurar_pstn: {{
         title: 'Space_OdT v2.1 · Configurar PSTN de ubicación',
@@ -346,7 +344,7 @@ def _html_page() -> str:
         mandatoryFields: ['locationId', 'premiseRouteType', 'premiseRouteId'],
         note: 'premiseRouteType será siempre ROUTE_GROUP.',
         endpoint: null,
-        implemented: false
+        mode: 'todo'
       }},
       alta_numeraciones: {{
         title: 'Space_OdT v2.1 · Alta numeraciones en ubicación',
@@ -355,7 +353,7 @@ def _html_page() -> str:
         mandatoryFields: ['locationId', 'phoneNumbers[]', 'numberType'],
         note: 'Requiere PSTN configurado previamente. Admite fórmula intercom: +3451xxxxxxx.',
         endpoint: '/api/location-jobs',
-        implemented: true
+        mode: 'job_upload'
       }}
     }};
 
@@ -385,6 +383,10 @@ def _html_page() -> str:
       return ACTIONS[currentAction].endpoint;
     }}
 
+    function showApiResponse(payload) {{
+      document.getElementById('finalConfig').textContent = JSON.stringify(payload, null, 2);
+    }}
+
 
     function renderMandatoryFields(fields) {{
       const target = document.getElementById('mandatoryFields');
@@ -402,17 +404,16 @@ def _html_page() -> str:
       document.getElementById('actionDescription').textContent = meta.description;
       document.getElementById('importantNote').textContent = meta.note;
       renderMandatoryFields(meta.mandatoryFields || []);
+      document.getElementById('uploadCard').classList.toggle('hidden', meta.mode !== 'job_upload');
+      document.getElementById('jobCard').classList.toggle('hidden', meta.mode !== 'job_upload');
+      document.getElementById('orgQueryCard').classList.toggle('hidden', meta.mode !== 'org_query');
       const uploadInfo = document.getElementById('uploadInfo');
-      if (!meta.implemented) {{
+      if (meta.mode === 'todo') {{
         uploadInfo.innerHTML = '<span class="badge">Próximamente</span> Esta acción ya está definida en UI y pendiente de conexión backend.';
       }}
     }}
 
     async function createJob() {{
-      if (!ACTIONS[currentAction].implemented) {{
-        document.getElementById('uploadInfo').innerHTML = '<span class="badge">Próximamente</span> Esta acción aún no tiene endpoint operativo en backend.';
-        return;
-      }}
       const fileEl = document.getElementById('file');
       if (!fileEl.files.length) {{
         alert('Seleccioná un archivo CSV o JSON');
@@ -428,8 +429,20 @@ def _html_page() -> str:
       }}
       currentJobId = data.job.job_id;
       document.getElementById('uploadInfo').innerHTML = `Job <code>${{currentJobId}}</code> creado con ${{data.count}} filas`;
+      showApiResponse(data);
       renderTable('preview', data.preview || []);
       renderJob(data.job);
+    }}
+
+    async function listLocationIds() {{
+      const orgId = document.getElementById('orgId').value.trim();
+      if (!orgId) {{
+        alert('Indicá orgId');
+        return;
+      }}
+      const r = await fetch(`/api/location-ids?orgId=${{encodeURIComponent(orgId)}}`);
+      const data = await r.json();
+      showApiResponse(data);
     }}
 
     async function startJob() {{
@@ -437,6 +450,7 @@ def _html_page() -> str:
       const r = await fetch(`/api/location-jobs/${{currentJobId}}/start`, {{ method: 'POST' }});
       const data = await r.json();
       if (data.error) {{ alert(data.error); return; }}
+      showApiResponse(data);
       renderJob(data.job);
       pollUntilDone();
     }}
@@ -445,7 +459,10 @@ def _html_page() -> str:
       if (!currentJobId) return;
       const r = await fetch(`/api/location-jobs/${{currentJobId}}`);
       const data = await r.json();
-      if (!data.error) renderJob(data);
+      if (!data.error) {{
+        showApiResponse(data);
+        renderJob(data);
+      }}
     }}
 
     async function pollUntilDone() {{
@@ -466,7 +483,7 @@ def _html_page() -> str:
         return;
       }}
       const simplified = toStatusAndApiResponse(data);
-      document.getElementById('finalConfig').textContent = JSON.stringify(simplified, null, 2);
+      showApiResponse(simplified);
       const errors = data.totals?.rejected || 0;
       document.getElementById('errorSummary').innerHTML = `Errores rechazados: <b>${{errors}}</b>`;
     }}
