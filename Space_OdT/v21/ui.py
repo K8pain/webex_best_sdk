@@ -9,7 +9,7 @@ import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .engine import MissingV21InputsError, V21Runner
 from .io import LOCATION_HEADERS, LOCATION_REQUIRED_CREATE_FIELDS, load_locations_from_json
@@ -49,6 +49,17 @@ def launch_v21_ui(*, token: str, out_dir: Path, host: str = '127.0.0.1', port: i
                 return
             if parsed.path == '/api/location-jobs/async-info':
                 self._send(runner.get_async_execution_info())
+                return
+            if parsed.path == '/api/location-ids':
+                org_id = (parse_qs(parsed.query).get('orgId') or [''])[0]
+                if not org_id:
+                    self._send({'error': 'orgId es obligatorio'}, status=400)
+                    return
+                try:
+                    payload = _run_async(runner.list_location_ids(org_id=org_id))
+                    self._send(payload)
+                except Exception as exc:  # noqa: BLE001
+                    self._send({'error': str(exc)}, status=400)
                 return
             if parsed.path.startswith('/api/location-jobs/'):
                 path_parts = [part for part in parsed.path.split('/') if part]
@@ -151,6 +162,12 @@ def _run_job_background(runner: V21Runner, job_id: str) -> None:
         failure_path = runner.jobs_dir / job_id / 'failure.json'
         failure_path.parent.mkdir(parents=True, exist_ok=True)
         failure_path.write_text(json.dumps(failure, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+
+
+def _run_async(awaitable):
+    import asyncio
+
+    return asyncio.run(awaitable)
 
 
 def _rows_from_multipart(raw: bytes, boundary: bytes) -> list[dict]:

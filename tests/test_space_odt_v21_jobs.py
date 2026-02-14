@@ -103,5 +103,55 @@ def test_html_contains_sidebar_and_wbxc_menu():
     from Space_OdT.v21.ui import _html_page
 
     html = _html_page()
-    assert 'Alta_Sedes+WBXC' in html
-    assert 'POST /telephony/config/locations' in html
+    assert 'Crear y activar ubicación Webex Calling' in html
+    assert '/api/location-wbxc-jobs' in html
+
+
+def test_list_location_ids_returns_ids_and_metadata(monkeypatch, tmp_path: Path):
+    import Space_OdT.v21.engine as engine_mod
+
+    class DummyApi:
+        def __init__(self, **kwargs):
+            self.session = object()
+
+    class DummyLocation:
+        def __init__(self, id: str, name: str):
+            self.id = id
+            self.name = name
+            self.time_zone = 'Europe/Madrid'
+            self.preferred_language = 'es_ES'
+
+        def model_dump(self, mode='json', by_alias=True, exclude_none=True):
+            return {
+                'id': self.id,
+                'name': self.name,
+                'timeZone': self.time_zone,
+                'preferredLanguage': self.preferred_language,
+            }
+
+    class DummyLocationsApi:
+        def __init__(self, session):
+            self.session = session
+
+        def list(self, org_id: str):
+            return [DummyLocation('loc-1', 'Madrid HQ'), DummyLocation('loc-2', 'Barcelona')]
+
+    monkeypatch.setattr(engine_mod, 'WebexSimpleApi', DummyApi)
+    monkeypatch.setattr(engine_mod, 'LocationsApi', DummyLocationsApi)
+
+    runner = V21Runner(token='token', out_dir=tmp_path)
+    payload = __import__('asyncio').run(runner.list_location_ids(org_id='ORG123'))
+
+    assert payload['orgId'] == 'ORG123'
+    assert payload['count'] == 2
+    assert payload['items'][0]['locationId'] == 'loc-1'
+
+
+def test_list_location_ids_requires_org_id(tmp_path: Path):
+    runner = V21Runner(token='token', out_dir=tmp_path)
+    try:
+        __import__('asyncio').run(runner.list_location_ids(org_id=''))
+    except ValueError as exc:
+        assert 'orgId es obligatorio' in str(exc)
+    else:
+        raise AssertionError('expected ValueError')

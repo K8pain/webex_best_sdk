@@ -9,7 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from wxc_sdk import WebexSimpleApi
 from wxc_sdk.as_api import AsLocationsApi, AsWebexSimpleApi
+from wxc_sdk.locations import LocationsApi
 
 from .io import bootstrap_v21_inputs, load_locations, save_json, write_plan_csv
 from .models import EntityType, LocationInput, PlannedAction, RunSummary, Stage
@@ -153,6 +155,39 @@ class V21Runner:
             },
         )
         return summary.__dict__
+
+    async def list_location_ids(self, *, org_id: str) -> dict[str, Any]:
+        """Return all location IDs for an org, with useful metadata for operators."""
+        normalized_org_id = (org_id or '').strip()
+        if not normalized_org_id:
+            raise ValueError('orgId es obligatorio')
+
+        api = WebexSimpleApi(tokens=self.token)
+        locations_api = LocationsApi(session=api.session)
+        self._log_verbose(event='request', method='locations_api.list')
+        try:
+            locations = locations_api.list(org_id=normalized_org_id)
+            self._log_verbose(event='response', method='locations_api.list', payload={'ok': True})
+        except Exception as exc:  # noqa: BLE001
+            self._log_verbose(
+                event='response',
+                method='locations_api.list',
+                payload={'ok': False, 'error_type': type(exc).__name__, 'error': str(exc)},
+            )
+            raise
+
+        items = []
+        for location in locations:
+            entry = self._to_jsonable_location(location)
+            items.append(
+                {
+                    'locationId': entry.get('id') or entry.get('locationId'),
+                    'name': entry.get('name'),
+                    'timeZone': entry.get('timeZone'),
+                    'preferredLanguage': entry.get('preferredLanguage'),
+                }
+            )
+        return {'orgId': normalized_org_id, 'count': len(items), 'items': items}
 
     def create_location_job(self, *, rows: list[dict[str, Any]], entity_type: str = 'location') -> LocationBulkJob:
         if entity_type not in {'location', 'location_webex_calling'}:
