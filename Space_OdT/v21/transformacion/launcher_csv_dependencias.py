@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-"""Script v21 de transformación: incluye comentarios guía en secciones críticas."""
+"""Launcher v21 que consume un CSV de parámetros (parametro,valor)."""
 
 import argparse
 import csv
 import datetime as dt
+import inspect
 import json
 import logging
 import time
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .common import get_token, load_runtime_env
+from .generar_csv_candidatos_desde_artifacts import SCRIPT_DEPENDENCIES
 from .ubicacion_actualizar_cabecera import actualizar_cabecera_ubicacion
 from .ubicacion_alta_numeraciones_desactivadas import alta_numeraciones_desactivadas
 from .ubicacion_configurar_llamadas_internas import configurar_llamadas_internas_ubicacion
@@ -51,28 +53,22 @@ HANDLERS: dict[str, ActionFn] = {
     'workspaces_configurar_perfil_saliente_custom': configurar_perfil_saliente_custom_workspace,
 }
 
-
 LOGGER = logging.getLogger(__name__)
 MAX_RETRIES_ON_RETRY_AFTER = 3
 
 
 def _retry_after_wait_seconds(retry_after_header: str | None) -> float | None:
-    """Convierte Retry-After (segundos o fecha HTTP) en segundos de espera."""
     if not retry_after_header:
         return None
-
     value = retry_after_header.strip()
     if not value:
         return None
-
     if value.isdigit():
         return max(float(value), 0.0)
-
     try:
         retry_dt = parsedate_to_datetime(value)
     except (TypeError, ValueError):
         return None
-
     now = dt.datetime.now(dt.timezone.utc)
     if retry_dt.tzinfo is None:
         retry_dt = retry_dt.replace(tzinfo=dt.timezone.utc)
@@ -80,12 +76,11 @@ def _retry_after_wait_seconds(retry_after_header: str | None) -> float | None:
 
 
 def _invoke_with_retry_after(*, handler: ActionFn, token: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Ejecuta handler respetando Retry-After cuando la API responde 429."""
     attempt = 0
     while True:
         try:
             return handler(token=token, **params)
-        except Exception as exc:  # noqa: BLE001 - launcher tolerante a errores por fila.
+        except Exception as exc:  # noqa: BLE001
             attempt += 1
             response = getattr(exc, 'response', None)
             status_code = getattr(response, 'status_code', None)
@@ -93,31 +88,65 @@ def _invoke_with_retry_after(*, handler: ActionFn, token: str, params: dict[str,
             retry_after = headers.get('Retry-After') or headers.get('retry-after')
             wait_seconds = _retry_after_wait_seconds(retry_after)
             should_retry = status_code == 429 and wait_seconds is not None and attempt <= MAX_RETRIES_ON_RETRY_AFTER
-
             if not should_retry:
                 raise
-
-            LOGGER.warning(
-                'Recibido 429 (Retry-After=%s). Reintento %s/%s en %.2fs',
-                retry_after,
-                attempt,
-                MAX_RETRIES_ON_RETRY_AFTER,
-                wait_seconds,
-            )
+            LOGGER.warning('Recibido 429 (Retry-After=%s). Reintento %s/%s en %.2fs', retry_after, attempt, MAX_RETRIES_ON_RETRY_AFTER, wait_seconds)
             time.sleep(wait_seconds)
 
 
 def _setup_debug_logging() -> None:
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s %(levelname)s %(name)s: %(message)s',
-    )
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
     logging.getLogger('wxc_sdk').setLevel(logging.DEBUG)
 
 
-def _read_rows(csv_path: Path) -> list[dict[str, str]]:
+def _parse_param_value(raw_value: str) -> Any:
+    value = (raw_value or '').strip()
+    if value == '':
+        return None
+    if value.lower() == 'true':
+        return True
+    if value.lower() == 'false':
+        return False
+    if value.startswith('[') or value.startswith('{'):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return raw_value
+    return raw_value
+
+
+def _is_missing_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ''
+    if isinstance(value, list):
+        return len(value) == 0
+    return False
+
+
+def _read_parameter_map(csv_path: Path) -> dict[str, Any]:
     with csv_path.open('r', encoding='utf-8', newline='') as handle:
-        return list(csv.DictReader(handle))
+        rows = list(csv.DictReader(handle))
+
+    if not rows:
+        return {}
+
+    headers = set(rows[0].keys())
+    if {'parametro', 'valor'}.issubset(headers):
+        return {
+            (row.get('parametro') or '').strip(): _parse_param_value(row.get('valor') or '')
+            for row in rows
+            if (row.get('parametro') or '').strip()
+        }
+
+    # Compatibilidad mínima con CSV anterior (1 fila con columnas=parámetros).
+    legacy_row = rows[0]
+    return {
+        key: _parse_param_value(value)
+        for key, value in legacy_row.items()
+        if key != 'script_name' and (value or '').strip() != ''
+    }
 
 
 def _confirm(script_name: str, auto_confirm: bool) -> bool:
@@ -127,21 +156,34 @@ def _confirm(script_name: str, auto_confirm: bool) -> bool:
     return answer in {'y', 'yes', 's', 'si'}
 
 
-def _run_row(*, row: dict[str, str], token: str, auto_confirm: bool, dry_run: bool) -> dict[str, Any]:
-    # Orquestador por fila: valida prerequisitos, confirma ejecución y captura errores.
-    script_name = row['script_name']
+def _params_for_script(script_name: str, parameter_map: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    required = SCRIPT_DEPENDENCIES[script_name]
+    missing = [dep for dep in required if _is_missing_value(parameter_map.get(dep))]
+    if missing:
+        return {}, missing
+
+    accepted_params = set(inspect.signature(HANDLERS[script_name]).parameters.keys()) - {'token'}
+    params = {
+        key: value
+        for key, value in parameter_map.items()
+        if key in accepted_params and not _is_missing_value(value)
+    }
+    return params, []
+
+
+def _run_script(*, script_name: str, parameter_map: dict[str, Any], token: str, auto_confirm: bool, dry_run: bool) -> dict[str, Any]:
     if script_name not in HANDLERS:
         return {'script_name': script_name, 'status': 'rejected', 'reason': 'unsupported_script'}
 
-    if row['candidate_status'] != 'ready':
+    params, missing = _params_for_script(script_name, parameter_map)
+    if missing:
         return {
             'script_name': script_name,
             'status': 'skipped',
             'reason': 'missing_dependencies',
-            'missing_dependencies': row.get('missing_dependencies', ''),
+            'missing_dependencies': ';'.join(missing),
         }
 
-    params = json.loads(row['params_json'])
     invocation_payload = {
         'script_name': script_name,
         'method': HANDLERS[script_name].__name__,
@@ -156,9 +198,8 @@ def _run_row(*, row: dict[str, str], token: str, auto_confirm: bool, dry_run: bo
         return {'script_name': script_name, 'status': 'dry_run', 'params': params, 'invocation': invocation_payload}
 
     try:
-        # 5) Resultado normalizado para logs/pipelines aguas abajo.
         result = _invoke_with_retry_after(handler=HANDLERS[script_name], token=token, params=params)
-    except Exception as exc:  # noqa: BLE001 - El launcher debe continuar con la siguiente fila.
+    except Exception as exc:  # noqa: BLE001
         LOGGER.exception('Fallo ejecutando %s con params=%s', script_name, json.dumps(params, ensure_ascii=False, sort_keys=True))
         return {
             'script_name': script_name,
@@ -174,9 +215,8 @@ def _run_row(*, row: dict[str, str], token: str, auto_confirm: bool, dry_run: bo
 
 
 def main() -> None:
-    # Entrada CLI: carga entorno, parsea argumentos y ejecuta la acción.
     load_runtime_env()
-    parser = argparse.ArgumentParser(description='Launcher v21 que usa CSV de dependencias y confirma antes de ejecutar')
+    parser = argparse.ArgumentParser(description='Launcher v21 que usa CSV de parámetros y confirma antes de ejecutar')
     parser.add_argument('--csv-path', type=Path, default=DEFAULT_CSV)
     parser.add_argument('--token', default=None)
     parser.add_argument('--script-name', action='append', default=None, help='Filtra por script_name (repetible)')
@@ -186,15 +226,13 @@ def main() -> None:
 
     _setup_debug_logging()
 
-    rows = _read_rows(args.csv_path)
-    if args.script_name:
-        wanted = set(args.script_name)
-        rows = [row for row in rows if row['script_name'] in wanted]
+    parameter_map = _read_parameter_map(args.csv_path)
+    scripts = args.script_name or sorted(HANDLERS.keys())
 
     token = '' if args.dry_run else get_token(args.token)
     report: list[dict[str, Any]] = []
-    for row in rows:
-        report.append(_run_row(row=row, token=token, auto_confirm=args.auto_confirm, dry_run=args.dry_run))
+    for script_name in scripts:
+        report.append(_run_script(script_name=script_name, parameter_map=parameter_map, token=token, auto_confirm=args.auto_confirm, dry_run=args.dry_run))
 
     print(json.dumps({'csv_path': str(args.csv_path), 'results': report}, indent=2, ensure_ascii=False, sort_keys=True))
 
