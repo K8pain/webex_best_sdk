@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import json
 import logging
+import time
 import traceback
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -50,6 +53,58 @@ HANDLERS: dict[str, ActionFn] = {
 
 
 LOGGER = logging.getLogger(__name__)
+MAX_RETRIES_ON_RETRY_AFTER = 3
+
+
+def _retry_after_wait_seconds(retry_after_header: str | None) -> float | None:
+    """Convierte Retry-After (segundos o fecha HTTP) en segundos de espera."""
+    if not retry_after_header:
+        return None
+
+    value = retry_after_header.strip()
+    if not value:
+        return None
+
+    if value.isdigit():
+        return max(float(value), 0.0)
+
+    try:
+        retry_dt = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+
+    now = dt.datetime.now(dt.timezone.utc)
+    if retry_dt.tzinfo is None:
+        retry_dt = retry_dt.replace(tzinfo=dt.timezone.utc)
+    return max((retry_dt - now).total_seconds(), 0.0)
+
+
+def _invoke_with_retry_after(*, handler: ActionFn, token: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Ejecuta handler respetando Retry-After cuando la API responde 429."""
+    attempt = 0
+    while True:
+        try:
+            return handler(token=token, **params)
+        except Exception as exc:  # noqa: BLE001 - launcher tolerante a errores por fila.
+            attempt += 1
+            response = getattr(exc, 'response', None)
+            status_code = getattr(response, 'status_code', None)
+            headers = getattr(response, 'headers', None) or {}
+            retry_after = headers.get('Retry-After') or headers.get('retry-after')
+            wait_seconds = _retry_after_wait_seconds(retry_after)
+            should_retry = status_code == 429 and wait_seconds is not None and attempt <= MAX_RETRIES_ON_RETRY_AFTER
+
+            if not should_retry:
+                raise
+
+            LOGGER.warning(
+                'Recibido 429 (Retry-After=%s). Reintento %s/%s en %.2fs',
+                retry_after,
+                attempt,
+                MAX_RETRIES_ON_RETRY_AFTER,
+                wait_seconds,
+            )
+            time.sleep(wait_seconds)
 
 
 def _setup_debug_logging() -> None:
@@ -102,7 +157,7 @@ def _run_row(*, row: dict[str, str], token: str, auto_confirm: bool, dry_run: bo
 
     try:
         # 5) Resultado normalizado para logs/pipelines aguas abajo.
-        result = HANDLERS[script_name](token=token, **params)
+        result = _invoke_with_retry_after(handler=HANDLERS[script_name], token=token, params=params)
     except Exception as exc:  # noqa: BLE001 - El launcher debe continuar con la siguiente fila.
         LOGGER.exception('Fallo ejecutando %s con params=%s', script_name, json.dumps(params, ensure_ascii=False, sort_keys=True))
         return {
