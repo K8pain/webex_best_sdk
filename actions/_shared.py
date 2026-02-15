@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import string
+from urllib.parse import quote
 from dataclasses import dataclass
 from pathlib import Path
 import tempfile
@@ -153,11 +154,28 @@ def _format_value(value: Any, variables: dict[str, Any]) -> Any:
     return value
 
 
+def _format_path(path_template: str, variables: dict[str, Any]) -> str:
+    """Format a request path while URL-encoding placeholder values.
+
+    This protects identifiers such as workspace IDs that may contain reserved URL
+    characters (for example `/` or `=` in base64-like ids).
+    """
+    placeholders = _string_placeholders(path_template)
+    missing = placeholders - set(variables)
+    if missing:
+        raise MissingVariablesError(missing)
+    encoded_vars = {
+        key: quote(str(variables[key]), safe="")
+        for key in placeholders
+    }
+    return path_template.format_map(encoded_vars)
+
+
 def _run_calls(client: SimpleApiClient, calls: list[ApiCall], variables: dict[str, Any], logger: logging.Logger) -> int:
     failures = 0
     for call in calls:
         try:
-            path = _format_value(call.path, variables)
+            path = _format_path(call.path, variables)
             payload = _format_value(call.payload, variables) if call.payload else None
             params = _format_value(call.params, variables) if call.params else None
         except MissingVariablesError as err:
@@ -213,7 +231,7 @@ def _preflight_snapshot(client: SimpleApiClient, spec: ActionSpec, variables: di
     entries: list[dict[str, Any]] = []
     for call in spec.probe_calls:
         try:
-            path = _format_value(call.path, variables)
+            path = _format_path(call.path, variables)
             params = _format_value(call.params, variables) if call.params else None
         except MissingVariablesError as err:
             logger.warning(
